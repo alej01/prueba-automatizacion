@@ -1,0 +1,121 @@
+version: 2
+packages:
+  WP01:
+    name: Domain Contracts
+    status: COMPLETED
+    objective: "Definir los contratos de dominio del recurso libro (modelo Book, requests y codigos de error BOOK_NOT_FOUND/ISBN_ALREADY_EXISTS) sobre los que se apoyan el resto de capas, sin alterar los codigos de usuarios. Paquete de tarea unica justificado: establece los tipos compartidos y no se agrupa con persistencia ni con negocio para no mezclar capas."
+    tasks: [T001]
+    dependencies: []
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - models_compile
+      - book_error_codes_defined_with_status
+      - existing_user_error_codes_unchanged
+    risk:
+      level: LOW
+
+  WP02:
+    name: In-Memory Persistence
+    status: COMPLETED
+    objective: "Implementar la persistencia en memoria de libros detras de la interfaz BookRepository, con busqueda por ISBN normalizado. Paquete de tarea unica justificado: la persistencia no se agrupa con la logica de negocio para no mezclar infraestructura y negocio."
+    tasks: [T002]
+    dependencies: [WP01]
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - repository_interface_implemented
+      - findByIsbn_compares_normalized_isbn
+      - new_instance_starts_empty
+    risk:
+      level: LOW
+
+  WP03:
+    name: Business Logic
+    status: COMPLETED
+    objective: "Implementar las reglas de negocio del recurso libro en BookService (unicidad de ISBN, validacion de existencia, actualizacion parcial y timestamps), independiente de HTTP. Paquete de tarea unica justificado: el servicio no se agrupa con persistencia ni con presentacion para no mezclar negocio con infraestructura."
+    tasks: [T003]
+    dependencies: [WP01, WP02]
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - service_has_no_http_dependency
+      - isbn_conflict_and_not_found_errors_raised
+      - published_year_defaults_to_null
+    risk:
+      level: MEDIUM
+
+  WP04:
+    name: Shared Validation Middleware and Book Schemas
+    status: COMPLETED
+    objective: "Extraer el middleware validateBody a un modulo compartido manteniendo la compatibilidad de userValidator y anadir los esquemas Zod de libros con normalizacion y checksum de ISBN. Paquete de tarea unica justificado: responsabilidad transversal de validacion, sin mezclar con presentacion ni con negocio."
+    tasks: [T004]
+    dependencies: [WP01]
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - user_routes_import_path_unchanged
+      - book_schemas_reject_invalid_payloads
+      - isbn_normalization_and_checksum_enforced
+      - update_schema_requires_at_least_one_field
+    risk:
+      level: MEDIUM
+
+  WP05:
+    name: HTTP API Layer
+    status: COMPLETED
+    objective: "Exponer el recurso libro mediante un controlador delgado y el cableado de bookRoutes y app.ts, preservando las rutas, el orden de middleware y el contrato de error de usuarios."
+    tasks: [T005, T006]
+    dependencies: [WP03, WP04]
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - all_five_book_endpoints_registered
+      - user_routes_preserved
+      - error_middleware_still_registered_last
+    risk:
+      level: MEDIUM
+
+  WP06:
+    name: Test Suite
+    status: COMPLETED
+    objective: "Cubrir con pruebas unitarias el servicio, el repositorio y el middleware compartido, y con pruebas de integracion los cinco endpoints de libros y el contrato de error, incluyendo la regresion del CRUD de usuarios."
+    tasks: [T007, T008]
+    dependencies: [WP02, WP03, WP04, WP05]
+    validation:
+      command: npx jest tests/services tests/repositories tests/validators tests/controllers --coverage
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - all_tests_pass
+      - coverage_statements_at_least_80
+      - existing_user_controller_tests_pass
+    risk:
+      level: MEDIUM
+
+  WP07:
+    name: Documentation
+    status: COMPLETED
+    objective: "Documentar en el README los endpoints de libros, el modelo Book, la validacion de ISBN y el catalogo de errores ampliado, preservando la documentacion de usuarios. Paquete de tarea unica justificado: la documentacion es una responsabilidad propia y no se mezcla con la implementacion."
+    tasks: [T009]
+    dependencies: [WP05]
+    validation:
+      command: npm run lint
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - book_endpoints_documented
+      - book_error_codes_documented
+      - user_api_documentation_preserved
+    risk:
+      level: LOW

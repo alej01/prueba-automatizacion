@@ -1,10 +1,11 @@
-# CRUD de Usuarios en Memoria
+# CRUD de Usuarios y Libros en Memoria
 
-API REST para la gestion de usuarios con almacenamiento **en memoria**, construida con
-Node.js, TypeScript (strict), Express y Zod.
+API REST para la gestion de usuarios y libros con almacenamiento **en memoria**,
+construida con Node.js, TypeScript (strict), Express y Zod.
 
-El proyecto es un CRUD sencillo: crear, listar, consultar, actualizar y eliminar usuarios.
-Los datos viven unicamente en memoria, por lo que se pierden al reiniciar el proceso.
+El proyecto expone dos CRUDs sencillos: crear, listar, consultar, actualizar y
+eliminar usuarios (`/api/users`) y libros (`/api/books`). Los datos viven unicamente
+en memoria, por lo que se pierden al reiniciar el proceso.
 
 ## Stack y requisitos
 
@@ -65,7 +66,8 @@ $env:PORT = "4000"; npm start
 PORT=4000 npm start
 ```
 
-Con el servidor en marcha, la base de la API es `http://localhost:3000/api/users`.
+Con el servidor en marcha, las bases de la API son
+`http://localhost:3000/api/users` y `http://localhost:3000/api/books`.
 
 ## Pruebas
 
@@ -77,7 +79,7 @@ npm run test:coverage    # suite + cobertura
 La cobertura minima configurada es 80 % statements, 70 % branches, 80 % functions y
 80 % lines.
 
-## Endpoints
+## Endpoints de usuarios
 
 Base path: `/api/users`. Todas las respuestas con cuerpo usan
 `Content-Type: application/json`.
@@ -196,6 +198,142 @@ curl -X DELETE http://localhost:3000/api/users/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4
 
 `204 No Content` sin body. Si el id no existe, `404` con `USER_NOT_FOUND`.
 
+## Endpoints de libros
+
+Base path: `/api/books`. Todas las respuestas con cuerpo usan
+`Content-Type: application/json`.
+
+| Metodo | Ruta | Body | Exito | Errores |
+|---|---|---|---|---|
+| `POST` | `/api/books` | `{ "title", "author", "isbn", "publishedYear"? }` | `201` + `Book` | `400`, `409` |
+| `GET` | `/api/books` | — | `200` + `Book[]` | — |
+| `GET` | `/api/books/:id` | — | `200` + `Book` | `404` |
+| `PUT` | `/api/books/:id` | `{ "title"?, "author"?, "isbn"?, "publishedYear"? }` | `200` + `Book` | `400`, `404`, `409` |
+| `DELETE` | `/api/books/:id` | — | `204` sin body | `404` |
+
+Modelo `Book`:
+
+```json
+{
+  "id": "9c8b7a65-4321-4f0e-9d8c-7b6a5f4e3d2c",
+  "title": "Clean Code",
+  "author": "Robert C. Martin",
+  "isbn": "9780132350884",
+  "publishedYear": 2008,
+  "createdAt": "2026-10-01T20:00:00.000Z",
+  "updatedAt": "2026-10-01T20:00:00.000Z"
+}
+```
+
+Reglas aplicables a los payloads:
+
+- `title`: string obligatorio, 1-200 caracteres, se aplica `trim`.
+- `author`: string obligatorio, 1-150 caracteres, se aplica `trim`.
+- `isbn`: obligatorio, se normaliza y se valida (ver mas abajo). Identifica al
+  libro de forma unica: no se admiten ISBN duplicados.
+- `publishedYear`: entero opcional entre `1450` y el ano actual + 1. Si se omite,
+  se persiste como `null`.
+- `id`, `createdAt` y `updatedAt` los gestiona el servidor; cualquier valor
+  enviado por el cliente para estos campos se ignora o se rechaza.
+- El `id` lo genera el servidor (UUID v4).
+- `PUT` es una actualizacion parcial: requiere al menos uno de
+  `title`/`author`/`isbn`/`publishedYear`. Enviar el mismo `isbn` que ya tiene el
+  libro es valido; solo se rechaza si el ISBN pertenece a otro libro.
+- Los esquemas son estrictos: los campos desconocidos se rechazan con `400`.
+
+### Validacion y normalizacion de ISBN
+
+El ISBN se normaliza antes de validarlo y persistirlo:
+
+1. Se aplica `trim` y se eliminan los espacios y guiones internos.
+2. Una `x` minuscula final se convierte a `X` (para ISBN-10).
+
+Sobre esa forma canonica se exige un ISBN-10 valido (digito de control mod 11,
+con `X` = 10) **o** un ISBN-13 valido (digito de control mod 10, pesos alternos
+1/3). Un ISBN con formato correcto pero digito de control invalido se rechaza con
+`400 VALIDATION_ERROR` (decision `ADR005`).
+
+La unicidad se evalua sobre el ISBN ya normalizado, por lo que
+`"978-0-13-235088-4"` y `"9780132350884"` se consideran el mismo valor y el
+segundo intento de alta responde `409 ISBN_ALREADY_EXISTS`.
+
+### Ejemplos de request / response
+
+#### Crear un libro
+
+```bash
+curl -X POST http://localhost:3000/api/books \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Clean Code","author":"Robert C. Martin","isbn":"978-0-13-235088-4"}'
+```
+
+`201 Created`:
+
+```json
+{
+  "id": "9c8b7a65-4321-4f0e-9d8c-7b6a5f4e3d2c",
+  "title": "Clean Code",
+  "author": "Robert C. Martin",
+  "isbn": "9780132350884",
+  "publishedYear": null,
+  "createdAt": "2026-10-01T20:00:00.000Z",
+  "updatedAt": "2026-10-01T20:00:00.000Z"
+}
+```
+
+El `isbn` se devuelve ya normalizado (sin guiones) y `publishedYear` es `null`
+porque no se envio.
+
+#### Listar libros
+
+```bash
+curl http://localhost:3000/api/books
+```
+
+`200 OK` con un array `Book[]`.
+
+#### Consultar un libro
+
+```bash
+curl http://localhost:3000/api/books/9c8b7a65-4321-4f0e-9d8c-7b6a5f4e3d2c
+```
+
+`200 OK` con el objeto `Book`. Si el id no existe, `404` con `BOOK_NOT_FOUND`.
+
+#### Actualizar un libro
+
+Actualizacion parcial; solo se aplican los campos enviados:
+
+```bash
+curl -X PUT http://localhost:3000/api/books/9c8b7a65-4321-4f0e-9d8c-7b6a5f4e3d2c \
+  -H "Content-Type: application/json" \
+  -d '{"publishedYear":2008}'
+```
+
+`200 OK`:
+
+```json
+{
+  "id": "9c8b7a65-4321-4f0e-9d8c-7b6a5f4e3d2c",
+  "title": "Clean Code",
+  "author": "Robert C. Martin",
+  "isbn": "9780132350884",
+  "publishedYear": 2008,
+  "createdAt": "2026-10-01T20:00:00.000Z",
+  "updatedAt": "2026-10-01T20:05:00.000Z"
+}
+```
+
+`updatedAt` se actualiza; `id` y `createdAt` se preservan.
+
+#### Eliminar un libro
+
+```bash
+curl -X DELETE http://localhost:3000/api/books/9c8b7a65-4321-4f0e-9d8c-7b6a5f4e3d2c
+```
+
+`204 No Content` sin body. Si el id no existe, `404` con `BOOK_NOT_FOUND`.
+
 ## Contrato de error uniforme
 
 Todos los errores comparten la misma forma:
@@ -217,7 +355,13 @@ Todos los errores comparten la misma forma:
 | `VALIDATION_ERROR` | `400` | Payload invalido, campo desconocido o `PUT` sin campos. |
 | `USER_NOT_FOUND` | `404` | El id no existe o la ruta no esta registrada. |
 | `EMAIL_ALREADY_EXISTS` | `409` | El email ya pertenece a otro usuario. |
+| `BOOK_NOT_FOUND` | `404` | El id de libro no existe. |
+| `ISBN_ALREADY_EXISTS` | `409` | El ISBN ya pertenece a otro libro (comparado en forma normalizada). |
 | `INTERNAL_ERROR` | `500` | Fallo no controlado; no expone stack trace ni detalles internos. |
+
+`VALIDATION_ERROR` se comparte entre usuarios y libros: en libros tambien cubre
+ISBN invalido (digito de control incorrecto) y `publishedYear` fuera de rango.
+`USER_NOT_FOUND` lo emite tambien la ruta no encontrada (middleware `notFound`).
 
 Ejemplos:
 
@@ -255,6 +399,42 @@ Ejemplos:
 }
 ```
 
+`400 Bad Request` (ISBN invalido al crear un libro):
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid request payload",
+    "details": [
+      { "field": "isbn", "message": "isbn must be a valid ISBN-10 or ISBN-13" }
+    ]
+  }
+}
+```
+
+`404 Not Found` (libro inexistente):
+
+```json
+{
+  "error": {
+    "code": "BOOK_NOT_FOUND",
+    "message": "Book not found"
+  }
+}
+```
+
+`409 Conflict` (ISBN duplicado):
+
+```json
+{
+  "error": {
+    "code": "ISBN_ALREADY_EXISTS",
+    "message": "ISBN already exists"
+  }
+}
+```
+
 ## Fuera de alcance
 
 La autenticacion y la gestion de contrasenas quedan **explicitamente fuera de alcance**:
@@ -266,6 +446,11 @@ La autenticacion y la gestion de contrasenas quedan **explicitamente fuera de al
 
 Esta decision esta registrada en el ADR004 del feature `FEAT-0001-crud-usuario-memoria`.
 
+Para los libros aplica la misma exclusion (sin autenticacion) y su modelo se limita
+a `id`, `title`, `author`, `isbn`, `publishedYear` y marcas de tiempo; los campos
+bibliograficos adicionales (editorial, genero, stock, etc.) quedan fuera de alcance
+segun el ADR006 del feature `FEAT-0002-crud-libro-memoria`.
+
 ## Arquitectura
 
 Separacion por capas, con dependencias dirigidas hacia el dominio:
@@ -274,16 +459,26 @@ Separacion por capas, con dependencias dirigidas hacia el dominio:
 src/
 ├── app.ts                     # composicion de Express (json parser, rutas, middlewares)
 ├── server.ts                  # bootstrap HTTP y lectura de PORT
-├── controllers/userController.ts   # capa HTTP delgada (sin logica de negocio)
-├── services/userService.ts         # reglas de negocio (sin dependencia de HTTP)
-├── repositories/                   # UserRepository + InMemoryUserRepository (Map)
-├── models/                         # User y clases de error de dominio
-├── middleware/                     # errorMiddleware y notFoundMiddleware
-├── routes/userRoutes.ts            # definicion de los cinco endpoints
-├── validators/userValidator.ts     # esquemas Zod y validateBody
-└── utils/idGenerator.ts            # generacion de UUID v4
+├── controllers/
+│   ├── userController.ts      # capa HTTP delgada de usuarios
+│   └── bookController.ts      # capa HTTP delgada de libros
+├── services/
+│   ├── userService.ts         # reglas de negocio de usuarios (sin HTTP)
+│   └── bookService.ts         # reglas de negocio de libros (sin HTTP)
+├── repositories/              # UserRepository/InMemoryUserRepository y
+│                              # BookRepository/InMemoryBookRepository (Map)
+├── models/                    # User, Book y clases de error de dominio
+├── middleware/                # errorMiddleware y notFoundMiddleware
+├── routes/
+│   ├── userRoutes.ts          # cinco endpoints de usuarios
+│   └── bookRoutes.ts          # cinco endpoints de libros
+├── validators/
+│   ├── validateBody.ts        # middleware compartido de validacion
+│   ├── userValidator.ts       # esquemas Zod de usuarios
+│   └── bookValidator.ts       # esquemas Zod de libros (ISBN)
+└── utils/idGenerator.ts       # generacion de UUID v4
 ```
 
-El almacenamiento esta detras de la interfaz `UserRepository`. Sustituir la
-persistencia en memoria por una real solo requiere una nueva implementacion de esa
-interfaz, sin tocar el servicio.
+El almacenamiento esta detras de las interfaces `UserRepository` y
+`BookRepository`. Sustituir la persistencia en memoria por una real solo requiere
+una nueva implementacion de cada interfaz, sin tocar los servicios.

@@ -1,18 +1,16 @@
 /**
- * Zod input schemas and validation middleware for user payloads (DES005).
+ * Zod input schemas for user payloads (DES005).
  *
  * All request bodies are validated before reaching a controller (RN002, RN003,
  * RN005 / owasp-baseline "Input Validation"). The schemas are `strict()`, so
  * unknown fields are rejected instead of silently ignored.
  *
- * Validation failures are converted into a domain `ValidationError` carrying
- * field level `details` and forwarded with `next(error)`. The centralized
- * `errorMiddleware` is the single place that renders the uniform API error
- * contract (DES004), so this middleware never writes a response itself.
+ * The `validateBody` middleware lives in the shared `validateBody` module
+ * (ADR003) and is re-exported here to keep `userRoutes.ts` imports stable.
  */
-import { NextFunction, Request, Response } from 'express';
-import { z, ZodError, ZodSchema } from 'zod';
-import { ErrorDetail, ValidationError } from '../models/errors';
+import { z } from 'zod';
+
+export { validateBody } from './validateBody';
 
 /** Max email length accepted by the API (RFC 5321 local+domain limit). */
 const EMAIL_MAX_LENGTH = 254;
@@ -60,34 +58,3 @@ export const updateUserSchema = z
     message: 'at least one field (name or email) must be provided',
     path: ['body'],
   });
-
-/**
- * Express middleware factory that validates `req.body` against `schema`.
- *
- * On success the parsed (and normalized) payload replaces `req.body` so that
- * controllers consume trusted data. On failure a `ValidationError` with the
- * Zod issues translated to `details` is forwarded to `next`.
- */
-export const validateBody =
-  (schema: ZodSchema) =>
-  (req: Request, _res: Response, next: NextFunction): void => {
-    try {
-      req.body = schema.parse(req.body);
-      next();
-    } catch (error) {
-      next(error instanceof ZodError ? toValidationError(error) : error);
-    }
-  };
-
-/** Maps a Zod parse failure to the domain validation error (DES004). */
-function toValidationError(error: ZodError): ValidationError {
-  return new ValidationError('Invalid request payload', toErrorDetails(error));
-}
-
-/** Converts Zod issues into stable `{ field, message }` details. */
-function toErrorDetails(error: ZodError): ErrorDetail[] {
-  return error.issues.map((issue) => ({
-    field: issue.path.length > 0 ? issue.path.join('.') : 'body',
-    message: issue.message,
-  }));
-}

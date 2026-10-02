@@ -1,0 +1,329 @@
+version: 2
+tasks:
+  T001:
+    name: Add Book domain model and book error types
+    status: COMPLETED
+    completed_at: "2026-10-01T21:15:46-05:00"
+    layer: domain
+    artifact_type: node.model
+    template:
+      id: templates.readme
+      path: templates/README.md
+      version: 1
+    objective: Definir las interfaces Book, CreateBookRequest y UpdateBookRequest, y ampliar el catalogo de errores con BOOK_NOT_FOUND e ISBN_ALREADY_EXISTS sin alterar los codigos existentes.
+    requirements: [RN004, RN005, RN006, RN007]
+    design: [DES002, DES004]
+    decisions: [ADR001, ADR005]
+    expected_output:
+      files:
+        - src/models/book.ts
+        - src/models/errors.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - models_compile
+        - book_type_declares_isbn_and_timestamps
+        - book_error_codes_defined_with_status
+        - existing_user_error_codes_unchanged
+    evidence:
+      - "src/models/book.ts define Book (id, title, author, isbn, publishedYear: number | null, createdAt, updatedAt), CreateBookRequest y UpdateBookRequest segun DES002."
+      - "src/models/errors.ts amplia ErrorCode con BOOK_NOT_FOUND e ISBN_ALREADY_EXISTS y anade BookNotFoundError (404) e IsbnConflictError (409) extendiendo AppError."
+      - "Los codigos y clases de usuario (USER_NOT_FOUND, EMAIL_ALREADY_EXISTS, NotFoundError, ConflictError) permanecen sin cambios."
+      - "npx tsc --noEmit finaliza con EXIT=0; npx eslint sobre los dos archivos finaliza con EXIT=0."
+    modified_files:
+      - src/models/book.ts
+      - src/models/errors.ts
+
+  T002:
+    name: Implement in-memory book repository
+    status: COMPLETED
+    completed_at: "2026-10-01T21:19:14-05:00"
+    layer: repository
+    artifact_type: node.repository
+    template:
+      id: node.repository
+      path: templates/node/repository.md
+      version: 1
+    objective: Implementar BookRepository e InMemoryBookRepository con Map, incluyendo save, findById, findByIsbn sobre ISBN normalizado, findAll y delete.
+    requirements: [RN001, RN006, RN008]
+    design: [DES006]
+    decisions: [ADR004]
+    expected_output:
+      files:
+        - src/repositories/inMemoryBookRepository.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - compiles_without_errors
+        - repository_interface_implemented
+        - findByIsbn_compares_normalized_isbn
+        - new_instance_starts_empty
+    evidence:
+      - "src/repositories/inMemoryBookRepository.ts define la interfaz BookRepository (save, findById, findByIsbn, findAll, delete) segun DES006, con metodos async que devuelven Promise (ADR004)."
+      - "InMemoryBookRepository implementa la interfaz con un Map<string, Book> privado que arranca vacio en cada instancia, de modo que cada instancia empieza sin datos (RN008)."
+      - "findByIsbn normaliza el ISBN de entrada (trim, elimina espacios y guiones, convierte x final a X) y lo compara contra el ISBN persistido, evaluando la unicidad sobre la forma canonica (RN001 / RN004 / ADR005)."
+      - "save persiste por book.id, findById/delete usan el Map por id y findAll devuelve Array.from de los valores."
+      - "Patron replicado de src/repositories/inMemoryUserRepository.ts (FEAT-0001) sin modificarlo."
+      - "npx tsc --noEmit finaliza con EXIT=0; npx eslint sobre el archivo finaliza con EXIT=0."
+    modified_files:
+      - src/repositories/inMemoryBookRepository.ts
+
+  T003:
+    name: Implement BookService with book CRUD business rules
+    status: COMPLETED
+    completed_at: "2026-10-01T21:23:30-05:00"
+    layer: service
+    artifact_type: node.service
+    template:
+      id: node.service
+      path: templates/node/service.md
+      version: 1
+    objective: Implementar BookService con create, list, getById, update y delete aplicando las reglas RN001-RN008, sin dependencia de HTTP.
+    requirements: [RN001, RN004, RN005, RN006, RN007]
+    design: [DES007]
+    decisions: [ADR002, ADR004]
+    expected_output:
+      files:
+        - src/services/bookService.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - compiles_without_errors
+        - service_has_no_http_dependency
+        - isbn_conflict_and_not_found_errors_raised
+        - published_year_defaults_to_null
+    evidence:
+      - "src/services/bookService.ts define BookService dependiendo solo de BookRepository (sin importar Express ni objetos req/res) segun DES007 y el patron de src/services/userService.ts (ADR002/ADR004)."
+      - "create normaliza isbn (trim, sin espacios/guiones, x final a X), valida duplicado con findByIsbn y lanza IsbnConflictError (409, ISBN_ALREADY_EXISTS; RN001), genera id con generateId (UUID v4), aplica trim a title/author, fija publishedYear a null cuando se omite (RN005) y setea createdAt/updatedAt (RN006)."
+      - "getById y delete lanzan BookNotFoundError (404, BOOK_NOT_FOUND) cuando el libro no existe (RN007); list delega en findAll (CA004)."
+      - "update valida existencia (BookNotFoundError), permite conservar el propio ISBN y lanza IsbnConflictError si el ISBN pertenece a otro libro (RN001), aplica solo title/author/isbn/publishedYear (ignora id/createdAt/updatedAt del cliente), preserva id/createdAt y refresca updatedAt (RN009)."
+      - "Verificacion funcional con ts-node: publishedYear null por defecto, ISBN normalizado a 9780132350884, conflictos IsbnConflictError/BookNotFoundError, actualizacion parcial y delete con list vacio (todas en verde)."
+      - "npx tsc --noEmit finaliza con EXIT=0; npx eslint sobre src/services/bookService.ts finaliza con EXIT=0."
+    modified_files:
+      - src/services/bookService.ts
+
+  T004:
+    name: Extract shared validateBody middleware and add Zod book schemas
+    status: COMPLETED
+    completed_at: "2026-10-01T22:15:00-05:00"
+    layer: validator
+    artifact_type: node.validator
+    template:
+      id: node.validator
+      path: templates/node/validator.md
+      version: 1
+    objective: Extraer el middleware validateBody a un modulo compartido, re-exportarlo desde userValidator y definir createBookSchema/updateBookSchema con normalizacion y validacion de ISBN.
+    requirements: [RN002, RN003, RN004, RN005, RN009]
+    design: [DES005]
+    decisions: [ADR003, ADR005]
+    expected_output:
+      files:
+        - src/validators/validateBody.ts
+        - src/validators/userValidator.ts
+        - src/validators/bookValidator.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - compiles_without_errors
+        - user_routes_import_path_unchanged
+        - book_schemas_reject_invalid_payloads
+        - isbn_normalization_and_checksum_enforced
+        - update_schema_requires_at_least_one_field
+    evidence:
+      - "src/validators/validateBody.ts aloja el middleware validateBody(schema) mas sus helpers toValidationError/toErrorDetails extraidos desde userValidator, segun DES005 y ADR003, reutilizable sin import cruzado entre features."
+      - "src/validators/userValidator.ts conserva createUserSchema/updateUserSchema y re-exporta validateBody desde el modulo compartido; src/routes/userRoutes.ts mantiene sin cambios el import desde '../validators/userValidator' (user_routes_import_path_unchanged)."
+      - "src/validators/bookValidator.ts define createBookSchema y updateBookSchema estrictos (rechazan campos desconocidos) con title trim 1-200 (RN002), author trim 1-150 (RN003) y publishedYear entero 1450..anio+1 opcional (RN005)."
+      - "El ISBN se normaliza (trim, eliminacion de espacios/guiones, x final a X) y se valida el digito de control ISBN-10 (mod 11, X=10) o ISBN-13 (mod 10, pesos 1/3); se verifico con ts-node el rechazo de '9780132350885', '0306406153' y 'not-an-isbn' y la aceptacion/normalizacion de '978-0-13-235088-4' y '0-8044-2957-x' (RN004 / ADR005)."
+      - "updateBookSchema exige al menos un campo de title/author/isbn/publishedYear: '{}' y '{ id: \"x\" }' fallan y '{ title: \"New\" }' pasa (RN009)."
+      - "Verificacion funcional con ts-node: 20 aserciones en verde, incluyendo la re-exportacion de validateBody, el contrato de usuarios intacto y la propagacion de ValidationError con details {field,message}."
+      - "npx tsc --noEmit finaliza con EXIT=0; npx eslint sobre los tres validadores finaliza con EXIT=0; la suite existente de usuarios (tests/controllers, tests/services, tests/repositories) pasa 49/49 sin cambios."
+    modified_files:
+      - src/validators/validateBody.ts
+      - src/validators/userValidator.ts
+      - src/validators/bookValidator.ts
+
+  T005:
+    name: Implement thin book controller
+    status: COMPLETED
+    completed_at: "2026-10-01T21:27:43-05:00"
+    layer: controller
+    artifact_type: node.controller
+    template:
+      id: node.controller
+      path: templates/node/controller.md
+      version: 1
+    objective: Implementar bookController con create, list, getById, update y delete, delegando en BookService y usando next(error).
+    requirements: [RN007]
+    design: [DES003, DES007]
+    decisions: [ADR002]
+    expected_output:
+      files:
+        - src/controllers/bookController.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - compiles_without_errors
+        - controller_contains_no_business_logic
+        - success_codes_201_200_204_applied
+        - errors_forwarded_with_next
+    evidence:
+      - "src/controllers/bookController.ts expone create, list, getById, update y delete como handlers delgados sobre BookService (DES003/DES007), replicando el patron de createUserController (ADR002)."
+      - "create responde 201, list y getById/update responden 200, y delete responde 204 sin body, segun el contrato DES003."
+      - "No hay logica de negocio, acceso a repositorio ni validacion en el controlador: reenvia req.body ya normalizado por validateBody y delega toda regla en BookService."
+      - "Todos los errores se reenvian con next(error) para que errorMiddleware renderice el contrato uniforme (DES004)."
+      - "npx tsc --noEmit finaliza con EXIT=0; npx eslint sobre src/controllers/bookController.ts finaliza con EXIT=0."
+    modified_files:
+      - src/controllers/bookController.ts
+
+  T006:
+    name: Add book routes and wire them into the Express app
+    status: COMPLETED
+    completed_at: "2026-10-01T21:28:42-05:00"
+    layer: routes
+    artifact_type: node.routes
+    template:
+      id: node.routes
+      path: templates/node/routes.md
+      version: 1
+    objective: Definir bookRoutes con los cinco endpoints, aplicar validateBody en POST y PUT, y montar /api/books en app.ts preservando las rutas y el orden de middleware de usuarios.
+    requirements: [RN007, RN010]
+    design: [DES003, DES009]
+    decisions: [ADR002]
+    expected_output:
+      files:
+        - src/routes/bookRoutes.ts
+        - src/app.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - compiles_without_errors
+        - all_five_book_endpoints_registered
+        - user_routes_preserved
+        - error_middleware_still_registered_last
+    evidence:
+      - "src/routes/bookRoutes.ts define createBookRoutes(controller) con los cinco endpoints (POST /, GET /, GET /:id, PUT /:id, DELETE /:id) segun DES003 y el patron de createUserRoutes."
+      - "validateBody(createBookSchema) se aplica en POST y validateBody(updateBookSchema) en PUT; GET/GET:id/DELETE no validan body."
+      - "src/app.ts amplia el grafo con InMemoryBookRepository -> BookService -> BookController -> bookRoutes montado en /api/books, manteniendo sin cambios el grafo y las rutas de usuarios (RN010)."
+      - "Orden de middleware preservado: express.json() -> /api/users -> /api/books -> notFoundMiddleware -> errorMiddleware (ultimo)."
+      - "Verificacion funcional con Supertest sobre createApp(): POST 201 (isbn normalizado 9780132350884, publishedYear null), GET 200 array, GET/:id 200, PUT 200, DELETE 204, POST duplicado 409 ISBN_ALREADY_EXISTS, DELETE inexistente 404 BOOK_NOT_FOUND, GET /api/users 200 y ruta no encontrada 404 con el contrato uniforme."
+      - "npx tsc --noEmit finaliza con EXIT=0; npx eslint sobre src/routes/bookRoutes.ts y src/app.ts finaliza con EXIT=0; la suite existente de usuarios pasa 49/49 sin cambios."
+    modified_files:
+      - src/routes/bookRoutes.ts
+      - src/app.ts
+
+  T007:
+    name: Add BookService, book repository and validateBody unit tests
+    status: COMPLETED
+    completed_at: "2026-10-01T22:40:00-05:00"
+    layer: test
+    artifact_type: node.test.unit
+    template:
+      id: templates.readme
+      path: templates/README.md
+      version: 1
+    objective: Cubrir las reglas del BookService con repositorio mockeado, el repositorio en memoria con instancia real y el middleware validateBody compartido.
+    requirements: [RN001, RN004, RN005, RN006, RN007, RN008]
+    design: [DES008]
+    decisions: [ADR003, ADR004]
+    expected_output:
+      files:
+        - tests/services/bookService.test.ts
+        - tests/repositories/inMemoryBookRepository.test.ts
+        - tests/validators/validateBody.test.ts
+    validation:
+      command: npx jest tests/services tests/repositories tests/validators --coverage
+      result: PASSED
+      done_when:
+        - all_tests_pass
+        - coverage_statements_at_least_80
+        - coverage_branches_at_least_70
+      tests:
+        - "5 suites / 66 tests en verde (bookService, inMemoryBookRepository, validateBody + las suites existentes de usuarios)."
+        - "Cobertura global: statements 99.42%, branches 93.47%, functions 100%, lines 99.41%."
+    evidence:
+      - "tests/services/bookService.test.ts cubre BookService con BookRepository mockeado: UUID v4 y timestamps (ESC-S01/RN006), normalizacion de title/author/isbn (ESC-S02/RN002-RN004), publishedYear null por defecto y valor explicito (ESC-S04/RN005), IsbnConflictError por ISBN duplicado normalizado (ESC-S03/RN001), list (ESC-S05/CA004), getById con BookNotFoundError (ESC-S06/RN007), update parcial conservando id/createdAt y refrescando updatedAt (ESC-S07/CA006), propio ISBN permitido y conflicto ajeno (ESC-S08/RN001), campos de cliente ignorados (RN006), delete existente/inexistente (ESC-S09/CA007)."
+      - "tests/repositories/inMemoryBookRepository.test.ts usa una instancia real de InMemoryBookRepository: arranque vacio por instancia (ESC-I05/RN008), save/findById sobre el mismo objeto (ESC-I01), reemplazo por id, findByIsbn sobre ISBN normalizado con guiones/espacios y x final (ESC-I02/RN001/RN004), findAll (ESC-I03/CA004) y delete true/false (ESC-I04/CA007)."
+      - "tests/validators/validateBody.test.ts verifica el middleware compartido: reemplazo de req.body por el payload parseado y normalizado (ESC-V01), traduccion de ZodError a ValidationError con details {field,message} incluyendo checksum de ISBN, campos faltantes, campo desconocido y publishedYear fuera de rango (ESC-V02), y propagacion intacta de errores no-Zod (ESC-V03); ademas cubre updateBookSchema exigiendo al menos un campo (RN009)."
+      - "Ejecucion 'npx jest tests/services tests/repositories tests/validators --coverage': 5 suites / 66 tests PASSED; cobertura statements 99.42% (>=80) y branches 93.47% (>=70), sobre el umbral de done_when."
+    modified_files:
+      - tests/services/bookService.test.ts
+      - tests/repositories/inMemoryBookRepository.test.ts
+      - tests/validators/validateBody.test.ts
+
+  T008:
+    name: Add book controller integration tests with Supertest
+    status: COMPLETED
+    completed_at: "2026-10-01T22:46:00-05:00"
+    layer: test
+    artifact_type: node.test.controller
+    template:
+      id: node.test.controller
+      path: templates/node/controller-test.md
+      version: 1
+    objective: Cubrir los cinco endpoints de libros con Supertest verificando codigos de exito, el contrato de error uniforme y la regresion del CRUD de usuarios.
+    requirements: [RN001, RN002, RN003, RN009, RN010]
+    design: [DES008]
+    decisions: [ADR002, ADR003]
+    expected_output:
+      files:
+        - tests/controllers/bookController.test.ts
+    validation:
+      command: npx jest tests/controllers --coverage
+      result: PASSED
+      done_when:
+        - all_endpoints_covered
+        - success_and_error_paths_tested
+        - error_contract_verified
+        - existing_user_controller_tests_pass
+      tests:
+        - "2 suites / 49 tests en verde (28 bookController + 21 userController de regresion)."
+        - "Cobertura global del directorio: statements 96.71%, branches 91.52%, functions 100%, lines 96.9%."
+    evidence:
+      - "tests/controllers/bookController.test.ts monta createApp() en cada prueba (repositorio en memoria real) y cubre los cinco endpoints: POST 201 con UUID y publishedYear null (ESC-P01/CA001), normalizacion (RN002-RN004) y publishedYear (RN005); POST duplicado 409 ISBN_ALREADY_EXISTS (ESC-P02/CA002); GET lista vacia y con datos 200 (ESC-P04/CA004); GET/:id 200 y 404 BOOK_NOT_FOUND (ESC-P05/CA005); PUT parcial conservando id/createdAt, cambio de isbn/publishedYear, propio ISBN permitido y conflicto ajeno 409 (ESC-P06/CA006/RN001); DELETE 204 sin body y 404 (ESC-P07/CA007)."
+      - "Rutas de error verificadas con el contrato uniforme { error: { code, message, details? } } y sin stack: 400 VALIDATION_ERROR con details de title (vacio), isbn (checksum invalido), publishedYear fuera de rango, campos desconocidos y payload sin campos (ESC-P03/RN009); 404 BOOK_NOT_FOUND; 409 ISBN_ALREADY_EXISTS (ESC-P08/CA008)."
+      - "Regresion de usuarios (ESC-P09/CA009/RN010): dentro del mismo createApp() se crea un usuario 201, se rechaza duplicado 409 EMAIL_ALREADY_EXISTS, se recupera por id 200 y se lista; ademas la suite existente tests/controllers/userController.test.ts se ejecuta sin cambios."
+      - "Ejecucion 'npx jest tests/controllers --coverage': 2 suites / 49 tests PASSED, incluyendo las 21 pruebas existentes de usuarios (existing_user_controller_tests_pass)."
+    modified_files:
+      - tests/controllers/bookController.test.ts
+
+  T009:
+    name: Document the books API and update the README
+    status: COMPLETED
+    completed_at: "2026-10-01T21:40:00-05:00"
+    layer: docs
+    artifact_type: node.docs
+    template:
+      id: templates.readme
+      path: templates/README.md
+      version: 1
+    objective: Documentar en README los endpoints de libros, el modelo Book, la validacion de ISBN y el catalogo de errores ampliado, preservando la documentacion de usuarios.
+    requirements: []
+    design: [DES003, DES004]
+    decisions: [ADR001, ADR005]
+    expected_output:
+      files:
+        - README.md
+    validation:
+      command: npm run lint
+      result: PASSED
+      done_when:
+        - book_endpoints_documented
+        - book_error_codes_documented
+        - isbn_rules_documented
+        - user_api_documentation_preserved
+    evidence:
+      - "README.md amplia el titulo/introduccion a usuarios y libros y la base de la API a /api/users y /api/books."
+      - "book_endpoints_documented: nueva seccion 'Endpoints de libros' con la tabla de los cinco endpoints (POST/GET/GET:id/PUT/DELETE /api/books), codigos de exito (201/200/204) y errores (400/404/409), el modelo Book y ejemplos curl de crear, listar, consultar, actualizar y eliminar segun DES003."
+      - "isbn_rules_documented: subseccion 'Validacion y normalizacion de ISBN' (trim, sin espacios/guiones, x final a X, checksum ISBN-10 mod 11 o ISBN-13 mod 10) y la unicidad sobre el ISBN normalizado, con el ejemplo 978-0-13-235088-4 -> 9780132350884 y 409 ISBN_ALREADY_EXISTS (RN004/ADR005)."
+      - "book_error_codes_documented: la tabla del catalogo de errores incorpora BOOK_NOT_FOUND (404) e ISBN_ALREADY_EXISTS (409) junto a los codigos existentes, con ejemplos 400 VALIDATION_ERROR de isbn, 404 BOOK_NOT_FOUND y 409 ISBN_ALREADY_EXISTS (DES004)."
+      - "user_api_documentation_preserved: se conservan intactos los endpoints, modelo, reglas, ejemplos y codigos de usuarios (USER_NOT_FOUND, EMAIL_ALREADY_EXISTS); solo se anadio el titulo calificador 'Endpoints de usuarios' y una nota aclaratoria bajo la tabla de codigos."
+      - "Arbol de arquitectura actualizado con bookController, bookService, BookRepository/InMemoryBookRepository, bookRoutes y bookValidator, preservando los componentes de usuarios."
+      - "npm run lint finaliza con EXIT=0 y npx tsc --noEmit finaliza con EXIT=0."
+    modified_files:
+      - README.md
