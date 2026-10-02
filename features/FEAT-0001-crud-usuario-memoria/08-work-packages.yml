@@ -1,0 +1,113 @@
+version: 2
+packages:
+  WP01:
+    name: Foundation and Domain
+    status: COMPLETED
+    objective: "Establecer el esqueleto del proyecto Node.js/TypeScript y los contratos de dominio (modelos y errores) sobre los que se apoyan el resto de capas."
+    tasks: [T001, T002]
+    dependencies: []
+    validation:
+      command: npm run build
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - typescript_strict_mode_enabled
+      - models_compile
+    risk:
+      level: LOW
+
+  WP02:
+    name: In-Memory Persistence
+    status: COMPLETED
+    objective: "Implementar el repositorio de usuarios en memoria con su interfaz y generacion de identificadores. Paquete de tarea unica justificado: la persistencia no se agrupa con la logica de negocio para no mezclar infraestructura y negocio."
+    tasks: [T003]
+    dependencies: [WP01]
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - repository_interface_implemented
+      - findByEmail_normalizes_to_lowercase
+    risk:
+      level: LOW
+
+  WP03:
+    name: Business Logic
+    status: COMPLETED
+    objective: "Implementar las reglas de negocio de usuarios en el servicio de aplicacion, independiente de HTTP. Paquete de tarea unica justificado: el servicio no se agrupa con persistencia ni con presentacion para no mezclar negocio con infraestructura."
+    tasks: [T004]
+    dependencies: [WP02]
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - service_has_no_http_dependency
+      - conflict_and_not_found_errors_raised
+    risk:
+      level: MEDIUM
+
+  WP04:
+    name: HTTP Validation and Error Handling
+    status: COMPLETED
+    objective: "Definir la validacion de payloads con Zod y el manejo centralizado de errores con el contrato uniforme de la API."
+    tasks: [T005, T006]
+    dependencies: [WP01]
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - schemas_reject_invalid_payloads
+      - unknown_errors_mapped_to_internal_error
+    risk:
+      level: LOW
+
+  WP05:
+    name: HTTP API Layer
+    status: COMPLETED
+    objective: "Exponer los endpoints REST mediante controladores delgados y el cableado de rutas, app y servidor."
+    tasks: [T007, T008]
+    dependencies: [WP03, WP04]
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - all_five_endpoints_registered
+      - error_middleware_registered_last
+    risk:
+      level: MEDIUM
+
+  WP06:
+    name: Test Suite
+    status: COMPLETED
+    objective: "Cubrir con pruebas unitarias el servicio y el repositorio, y con pruebas de integracion los cinco endpoints y el contrato de error."
+    tasks: [T009, T010]
+    dependencies: [WP02, WP03, WP05]
+    validation:
+      command: npx jest --coverage
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - all_tests_pass
+      - coverage_statements_at_least_80
+    risk:
+      level: MEDIUM
+
+  WP07:
+    name: Documentation
+    status: COMPLETED
+    objective: "Documentar endpoints, ejemplos de request/response, contrato de error y comandos de instalacion, ejecucion y pruebas. Paquete de tarea unica justificado: la documentacion es una responsabilidad propia y no se mezcla con la implementacion."
+    tasks: [T011]
+    dependencies: [WP05]
+    validation:
+      command: npm run lint
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - endpoints_documented
+      - run_and_test_commands_documented
+    risk:
+      level: LOW

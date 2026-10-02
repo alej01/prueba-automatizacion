@@ -1,0 +1,397 @@
+version: 2
+tasks:
+  T001:
+    name: Scaffold Node.js project with TypeScript and Jest
+    status: COMPLETED
+    completed_at: "2026-10-01T19:45:10-05:00"
+    layer: config
+    artifact_type: node.project-scaffold
+    template:
+      id: templates.readme
+      path: templates/README.md
+      version: 1
+    objective: Crear package.json, tsconfig.json strict, jest.config.ts, ESLint y Prettier con scripts de build, test y lint.
+    requirements: []
+    design: [DES001]
+    decisions: [ADR001]
+    expected_output:
+      files:
+        - package.json
+        - tsconfig.json
+        - jest.config.ts
+        - .eslintrc.json
+        - .prettierrc
+        - .gitignore
+    validation:
+      command: npm install
+      result: PASSED
+      done_when:
+        - dependencies_installed
+        - typescript_strict_mode_enabled
+        - jest_and_lint_scripts_defined
+    evidence:
+      - "npm install completado con EXIT=0 (510 paquetes instalados, node v24.21.0 / npm 11.19.0)."
+      - "tsconfig.json define strict:true junto con noImplicitAny, strictNullChecks, noUnusedLocals y noImplicitReturns."
+      - "package.json expone scripts build (tsc), test (jest), test:coverage, lint y lint:fix."
+      - "jest.config.ts usa preset ts-jest sobre tests/**/*.test.ts; .eslintrc.json y .prettierrc configurados."
+    modified_files:
+      - package.json
+      - tsconfig.json
+      - jest.config.ts
+      - .eslintrc.json
+      - .prettierrc
+      - .gitignore
+      - package-lock.json
+
+  T002:
+    name: Create user domain model and error types
+    status: COMPLETED
+    completed_at: "2026-10-01T19:47:30-05:00"
+    layer: domain
+    artifact_type: node.model
+    template:
+      id: templates.readme
+      path: templates/README.md
+      version: 1
+    objective: Definir las interfaces User, CreateUserRequest y UpdateUserRequest, y las clases ValidationError, NotFoundError y ConflictError con code.
+    requirements: [RN004, RN008]
+    design: [DES002, DES004]
+    decisions: [ADR004]
+    expected_output:
+      files:
+        - src/models/user.ts
+        - src/models/errors.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - models_compile
+        - errors_expose_code_and_message
+        - no_auth_fields_present
+    evidence:
+      - "npx tsc --noEmit finaliza con EXIT=0 sobre src/models/user.ts y src/models/errors.ts."
+      - "User, CreateUserRequest y UpdateUserRequest definidos segun DES002; fechas ISO 8601 y id UUID."
+      - "ValidationError, NotFoundError y ConflictError extienden AppError con code y statusCode estables (VALIDATION_ERROR/USER_NOT_FOUND/EMAIL_ALREADY_EXISTS)."
+      - "Sin campos de autenticacion (password/token/role) en el modelo, alineado con RN008 y ADR004."
+      - "Validacion global del paquete WP01: npm run build finaliza con EXIT=0."
+    modified_files:
+      - src/models/user.ts
+      - src/models/errors.ts
+
+  T003:
+    name: Implement in-memory user repository
+    layer: repository
+    artifact_type: node.repository
+    template:
+      id: node.repository
+      path: templates/node/repository.md
+      version: 1
+    objective: Implementar UserRepository e InMemoryUserRepository con Map, incluyendo save, findById, findByEmail case-insensitive, findAll y delete.
+    requirements: [RN001, RN004, RN007]
+    design: [DES006]
+    decisions: [ADR002]
+    expected_output:
+      files:
+        - src/repositories/inMemoryUserRepository.ts
+        - src/utils/idGenerator.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - compiles_without_errors
+        - repository_interface_implemented
+        - findByEmail_normalizes_to_lowercase
+    status: COMPLETED
+    completed_at: "2026-10-01T19:52:00-05:00"
+    evidence:
+      - "npx tsc --noEmit finaliza con EXIT=0 sobre src/repositories/inMemoryUserRepository.ts y src/utils/idGenerator.ts."
+      - "UserRepository declara save, findById, findByEmail, findAll y delete con retorno Promise, segun DES006 y ADR002."
+      - "InMemoryUserRepository implementa la interfaz con Map<string, User>; cada instancia arranca vacia (RN007)."
+      - "findByEmail normaliza a minusculas (trim + toLowerCase): 'User@Example.COM' se encuentra con 'user@example.com' y 'USER@EXAMPLE.COM' (RN001)."
+      - "generateId() delega en uuid v4 para el identificador del servidor (RN004)."
+      - "Prueba manual con ts-node: findByEmail acierta en minusculas/mayusculas, devuelve undefined para email inexistente y delete retorna true/false correctamente."
+    modified_files:
+      - src/repositories/inMemoryUserRepository.ts
+      - src/utils/idGenerator.ts
+
+  T004:
+    name: Implement user service with CRUD business rules
+    status: COMPLETED
+    completed_at: "2026-10-01T19:48:49-05:00"
+    layer: service
+    artifact_type: node.service
+    template:
+      id: node.service
+      path: templates/node/service.md
+      version: 1
+    objective: Implementar UserService con create, list, getById, update y delete aplicando las reglas de negocio y sin dependencia de HTTP.
+    requirements: [RN001, RN002, RN003, RN004, RN005, RN006, RN007]
+    design: [DES007]
+    decisions: [ADR002, ADR003]
+    expected_output:
+      files:
+        - src/services/userService.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - compiles_without_errors
+        - service_has_no_http_dependency
+        - conflict_and_not_found_errors_raised
+    evidence:
+      - "npx tsc --noEmit finaliza con EXIT=0 sobre src/services/userService.ts (TypeScript strict)."
+      - "El servicio no importa express ni tipos HTTP (scan sin coincidencias para from 'express', NextFunction, req:/res:, RequestHandler); depende solo de UserRepository."
+      - "create() normaliza el email (trim + minusculas) y lanza ConflictError ante email duplicado; getById/update/delete lanzan NotFoundError cuando el id no existe (RN001, RN006)."
+      - "update() permite conservar el email propio y lanza ConflictError si el email pertenece a otro usuario; solo aplica name/email y preserva id/createdAt, actualizando updatedAt (RN004, RN005, ESC-S06, ESC-S08)."
+      - "Verificacion runtime con ts-node e InMemoryUserRepository: email almacenado en minusculas (ada@example.com), conflictOnDuplicate=true, notFoundOnGet=true, conflictOnUpdateForeignEmail=true, ownEmailAllowed=true, listCount=2, notFoundOnDelete=true."
+      - "Validacion global del paquete WP03: npx tsc --noEmit finaliza con EXIT=0."
+    modified_files:
+      - src/services/userService.ts
+
+  T005:
+    name: Create Zod validators for user payloads
+    status: COMPLETED
+    completed_at: "2026-10-01T20:15:00-05:00"
+    layer: validator
+    artifact_type: node.validator
+    template:
+      id: node.validator
+      path: templates/node/validator.md
+      version: 1
+    objective: Definir createUserSchema y updateUserSchema y el middleware validateBody que traduzca errores a ValidationError con details.
+    requirements: [RN002, RN003, RN005]
+    design: [DES005]
+    decisions: [ADR003]
+    expected_output:
+      files:
+        - src/validators/userValidator.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - schemas_reject_invalid_payloads
+        - update_schema_requires_at_least_one_field
+        - unknown_fields_rejected
+    evidence:
+      - "npx tsc --noEmit finaliza con EXIT=0 sobre src/validators/userValidator.ts (TypeScript strict)."
+      - "createUserSchema: name string 1-100 con trim y email valido max 254 transformado a minusculas, segun DES005 (RN002, RN003)."
+      - "updateUserSchema: objeto parcial estricto con al menos un campo (name y/o email) y strict() para rechazar campos desconocidos (RN005)."
+      - "validateBody(schema) ejecuta schema.parse(req.body), reemplaza req.body por el payload normalizado y propaga ValidationError con details ({field, message}) via next(error); no responde directamente."
+      - "Verificacion runtime con ts-node: name '  Ada Lovelace  ' -> 'Ada Lovelace'; email '  Ada@Example.COM ' -> 'ada@example.com'; se rechazan email invalido, name vacio, name ausente, campo desconocido (role), update vacio y update con id; payload invalido produce ValidationError code=VALIDATION_ERROR statusCode=400 con details[0].field='email'."
+    modified_files:
+      - src/validators/userValidator.ts
+
+  T006:
+    name: Add centralized error and not-found middleware
+    status: COMPLETED
+    completed_at: "2026-10-01T20:30:00-05:00"
+    layer: middleware
+    artifact_type: node.middleware
+    template:
+      id: templates.readme
+      path: templates/README.md
+      version: 1
+    objective: Implementar errorMiddleware y notFoundMiddleware que traduzcan errores al contrato uniforme y registren errores no controlados como INTERNAL_ERROR.
+    requirements: [RN008]
+    design: [DES004]
+    decisions: [ADR003]
+    expected_output:
+      files:
+        - src/middleware/errorMiddleware.ts
+        - src/middleware/notFoundMiddleware.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - compiles_without_errors
+        - error_contract_mapper_implemented
+        - unknown_errors_mapped_to_internal_error
+    evidence:
+      - "npx tsc --noEmit finaliza con EXIT=0 sobre src/middleware/errorMiddleware.ts y src/middleware/notFoundMiddleware.ts; npx eslint sobre ambos archivos finaliza con EXIT=0."
+      - "errorMiddleware (firma de 4 argumentos) implementa el mapeo al contrato uniforme { error: { code, message, details? } }: AppError se responde con su statusCode/code, ValidationError ademas expone details (DES004)."
+      - "Errores no controlados se registran con logging estructurado JSON (level/event/code/name/message/stack, sin payloads ni datos sensibles, RN008) y se responden como INTERNAL_ERROR 500 con mensaje generico y sin stack trace."
+      - "Si res.headersSent, delega en el handler por defecto con next(error)."
+      - "notFoundMiddleware convierte rutas no encontradas en NotFoundError y las propaga con next(error), manteniendo un unico punto de render del contrato."
+      - "Verificacion runtime con Express + Supertest: payload invalido -> 400 VALIDATION_ERROR con details[0].field='email'; ConflictError -> 409 EMAIL_ALREADY_EXISTS; ValidationError -> 400 con details; NotFoundError -> 404 USER_NOT_FOUND; ruta inexistente -> 404 USER_NOT_FOUND 'Route not found'; Error desconocido -> 500 INTERNAL_ERROR sin stack ni mensaje interno en el body."
+      - "Validacion global del paquete WP04: npx tsc --noEmit finaliza con EXIT=0."
+    modified_files:
+      - src/middleware/errorMiddleware.ts
+      - src/middleware/notFoundMiddleware.ts
+
+  T007:
+    name: Implement thin user controller
+    status: COMPLETED
+    completed_at: "2026-10-01T19:56:18-05:00"
+    layer: controller
+    artifact_type: node.controller
+    template:
+      id: node.controller
+      path: templates/node/controller.md
+      version: 1
+    objective: Implementar userController con create, list, getById, update y delete, delegando en el servicio y usando next(error).
+    requirements: [RN006]
+    design: [DES003, DES007]
+    decisions: [ADR001]
+    expected_output:
+      files:
+        - src/controllers/userController.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - compiles_without_errors
+        - controller_contains_no_business_logic
+        - errors_forwarded_with_next
+    evidence:
+      - "npx tsc --noEmit finaliza con EXIT=0 sobre src/controllers/userController.ts (TypeScript strict)."
+      - "createUserController(userService) expone los cinco handlers (create, list, getById, update y delete) y solo traduce HTTP <-> servicio: no contiene reglas de negocio ni validacion propia (DES003/DES007, RN006)."
+      - "Cada handler delega en UserService y captura cualquier fallo con next(error), dejando el render del contrato de error en errorMiddleware."
+      - "Codigos de exito segun DES003: POST 201, GET/list y PUT 200, DELETE 204 sin body."
+      - "El servicio se inyecta via factory (createUserController), por lo que app.ts conserva la composicion de dependencias y no hay instancias globales acopladas."
+    modified_files:
+      - src/controllers/userController.ts
+
+  T008:
+    name: Wire user routes and Express app
+    status: COMPLETED
+    completed_at: "2026-10-01T19:57:48-05:00"
+    layer: routes
+    artifact_type: node.routes
+    template:
+      id: node.routes
+      path: templates/node/routes.md
+      version: 1
+    objective: Definir userRoutes con los cinco endpoints y montar app.ts con json parser, rutas, notFoundMiddleware y errorMiddleware, mas server.ts con PORT.
+    requirements: [RN006]
+    design: [DES003, DES004]
+    decisions: [ADR001]
+    expected_output:
+      files:
+        - src/routes/userRoutes.ts
+        - src/app.ts
+        - src/server.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - compiles_without_errors
+        - all_five_endpoints_registered
+        - error_middleware_registered_last
+    evidence:
+      - "npx tsc --noEmit finaliza con EXIT=0 sobre src/routes/userRoutes.ts, src/app.ts y src/server.ts (TypeScript strict); npx eslint sobre los cuatro archivos del WP finaliza con EXIT=0."
+      - "createUserRoutes monta los cinco endpoints de DES003: POST /, GET /, GET /:id, PUT /:id y DELETE /:id; los verbos POST y PUT aplican validateBody(createUserSchema | updateUserSchema) antes del controlador (DES005)."
+      - "createApp compone el grafo InMemoryUserRepository -> UserService -> UserController -> userRoutes, aplica express.json() y monta las rutas en /api/users."
+      - "Orden de middleware verificado en runtime inspeccionando app._router.stack: [query, expressInit, jsonParser, router, notFoundMiddleware, errorMiddleware]; errorMiddleware queda en ultima posicion (DES001/DES004)."
+      - "server.ts lee PORT del entorno con fallback 3000 y arranca el servidor; sin secretos hardcodeados."
+      - "Verificacion de integracion con Express + Supertest sobre un app creado por createApp: POST 201 (email normalizado a ada@example.com), GET/list 200 (1 usuario), GET/:id 200, PUT/:id 200 (name actualizado), POST duplicado 409 EMAIL_ALREADY_EXISTS, payload invalido 400 VALIDATION_ERROR con details[0].field='name', GET/:id inexistente 404 USER_NOT_FOUND, DELETE 204 sin body, ruta inexistente 404 USER_NOT_FOUND."
+    modified_files:
+      - src/routes/userRoutes.ts
+      - src/app.ts
+      - src/server.ts
+
+  T009:
+    name: Add service and repository unit tests
+    layer: test
+    artifact_type: node.test.unit
+    template:
+      id: templates.readme
+      path: templates/README.md
+      version: 1
+    objective: Cubrir las reglas de negocio del servicio con repositorio mockeado y el repositorio en memoria con instancia real.
+    requirements: [RN001, RN004, RN006, RN007]
+    design: [DES008]
+    decisions: [ADR002]
+    expected_output:
+      files:
+        - tests/services/userService.test.ts
+        - tests/repositories/inMemoryUserRepository.test.ts
+    validation:
+      command: npx jest tests/services tests/repositories --coverage
+      result: PASSED
+      done_when:
+        - all_tests_pass
+        - coverage_statements_at_least_80
+        - coverage_branches_at_least_70
+    status: COMPLETED
+    completed_at: "2026-10-01T20:01:52-05:00"
+    evidence:
+      - "npx jest tests/services tests/repositories --coverage finaliza con EXIT=0: 2 suites, 25/25 tests en verde (0 fallos)."
+      - "userService.test.ts (18 tests) mockea UserRepository (jest.Mocked) y cubre ESC-S01..ESC-S08: create con UUID v4 e ISO 8601, normalizacion trim+lowercase, conflicto de email (incl. case-insensitive), list, getById existente/inexistente, update parcial (name/email/propio email/conflicto/normalizacion), ignorar id-createdAt-updatedAt y campos no-string del cliente, y delete existente/inexistente."
+      - "inMemoryUserRepository.test.ts (7 tests) usa instancia real y cubre ESC-I01..ESC-I05: instancia vacia, save/findById, reemplazo por id, findByEmail case-insensitive con espacios, findAll y delete true/false (RN001, RN007)."
+      - "Cobertura del comando (solo modulos cargados): All files statements 94.11% (>=80) y branches 85.71% (>=70); userService.ts, inMemoryUserRepository.ts e idGenerator.ts al 100%."
+      - "El umbral global de cobertura (statements >=80, branches >=70, functions >=80, lines >=80) se confirma en la corrida completa del paquete: npx jest --coverage -> statements 99.39%, branches 93.54%, functions 100%, lines 99.36% (ver WP06)."
+      - "npx eslint \"tests/**/*.ts\" finaliza con EXIT=0."
+    modified_files:
+      - tests/services/userService.test.ts
+      - tests/repositories/inMemoryUserRepository.test.ts
+
+  T010:
+    name: Add controller integration tests with Supertest
+    layer: test
+    artifact_type: node.test.controller
+    template:
+      id: node.test.controller
+      path: templates/node/controller-test.md
+      version: 1
+    objective: Cubrir los cinco endpoints con Supertest verificando codigos de exito y el contrato de error uniforme.
+    requirements: [RN005, RN006]
+    design: [DES008]
+    decisions: [ADR003]
+    expected_output:
+      files:
+        - tests/controllers/userController.test.ts
+    validation:
+      command: npx jest tests/controllers --coverage
+      result: PASSED
+      done_when:
+        - all_endpoints_covered
+        - success_and_error_paths_tested
+        - error_contract_verified
+    status: COMPLETED
+    completed_at: "2026-10-01T20:01:52-05:00"
+    evidence:
+      - "npx jest tests/controllers --coverage finaliza con EXIT=0: 1 suite, 24/24 tests en verde (0 fallos)."
+      - "Integracion real end-to-end con Supertest sobre createApp() (repositorio en memoria real por app, segun DES008), cubriendo ESC-P01..ESC-P08 y los cinco endpoints: POST 201/400/409, GET / 200 (vacio y con datos), GET /:id 200/404, PUT /:id 200/400/404/409, DELETE /:id 204/404."
+      - "Contrato de error uniforme verificado en 400 VALIDATION_ERROR (con details por campo name/email y campos desconocidos), 404 USER_NOT_FOUND, 409 EMAIL_ALREADY_EXISTS y 500 INTERNAL_ERROR, comprobando forma { error: { code, message, details? } }, ausencia de stack trace y no filtrado de mensajes internos (CA008, RN008)."
+      - "Casos borde del errorMiddleware probados: delegacion cuando headersSent es true y ValidationError sin details; ademas se verifica el log estructurado ante errores no controlados (Error y valor no-Error)."
+      - "Cobertura del comando: statements 99.39% y branches 93.54%; app.ts, routes, middleware, validators y controllers ejercitados."
+      - "npx eslint \"tests/**/*.ts\" finaliza con EXIT=0."
+    modified_files:
+      - tests/controllers/userController.test.ts
+
+  T011:
+    name: Document API usage and execution
+    status: COMPLETED
+    completed_at: "2026-10-01T20:03:49-05:00"
+    layer: docs
+    artifact_type: node.docs
+    template:
+      id: templates.readme
+      path: templates/README.md
+      version: 1
+    objective: Documentar en README los endpoints, ejemplos de request/response, contrato de error y comandos de instalacion, ejecucion y pruebas.
+    requirements: []
+    design: [DES003, DES004]
+    decisions: [ADR001, ADR004]
+    expected_output:
+      files:
+        - README.md
+    validation:
+      command: npm run lint
+      result: PASSED
+      done_when:
+        - endpoints_documented
+        - run_and_test_commands_documented
+        - out_of_scope_auth_documented
+    evidence:
+      - "npm run lint finaliza con EXIT=0 (eslint sobre src/**/*.ts y tests/**/*.ts, sin errores)."
+      - "README.md documenta la instalacion (npm install), los requisitos (Node.js >=20, TypeScript strict, Express, Zod) y todos los scripts de package.json (build, start, dev, test, test:coverage, lint, lint:fix, format, format:check)."
+      - "README.md documenta la ejecucion (npm run dev y build + start), la variable PORT con fallback 3000 y la base de la API http://localhost:3000/api/users."
+      - "Los cinco endpoints de DES003 quedan documentados en tabla (POST/GET/GET :id/PUT :id/DELETE :id) con body, codigos de exito y errores, mas el modelo User y las reglas de name/email."
+      - "Se incluyen ejemplos curl de request/response para crear, listar, consultar, actualizar y eliminar, con el email normalizado a minusculas y el id UUID v4 generado por el servidor."
+      - "El contrato de error uniforme { error: { code, message, details? } } queda documentado con los codigos VALIDATION_ERROR (400), USER_NOT_FOUND (404), EMAIL_ALREADY_EXISTS (409) e INTERNAL_ERROR (500) y ejemplos de 400/404/409 (DES004)."
+      - "La seccion 'Fuera de alcance' documenta explicitamente la exclusion de autenticacion y gestion de contrasenas (ADR004, RN008)."
+      - "Se incluye la estructura de carpetas y la separacion por capas de DES001/DES007."
+      - "Validacion global del paquete WP07: npm run lint finaliza con EXIT=0."
+    modified_files:
+      - README.md

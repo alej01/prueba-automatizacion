@@ -1,0 +1,78 @@
+version: 2
+verification:
+  status: APPROVED_WITH_OBSERVATIONS
+  date: "2026-10-01"
+  commit: UNCOMMITTED
+quality_gate:
+  passed: true
+tests:
+  total: 49
+  passed: 49
+  failed: 0
+  skipped: 0
+coverage:
+  line: 99.36
+  branch: 93.54
+sonarqube:
+  gate: PENDING
+  bugs: 0
+  vulnerabilities: 0
+  smells: 0
+criteria:
+  CA001:
+    status: PASS
+    tests:
+      - tests/services/userService.test.ts
+      - tests/controllers/userController.test.ts
+    notes: "POST /api/users 201 con id UUID, name, email normalizado, createdAt y updatedAt; recuperable por GET /:id."
+  CA002:
+    status: PASS
+    tests:
+      - tests/services/userService.test.ts
+      - tests/controllers/userController.test.ts
+    notes: "Email duplicado (case-insensitive) responde 409 EMAIL_ALREADY_EXISTS sin crear un segundo usuario."
+  CA003:
+    status: PASS
+    tests:
+      - tests/controllers/userController.test.ts
+    notes: "Payload invalido responde 400 VALIDATION_ERROR con details por campo."
+  CA004:
+    status: PASS
+    tests:
+      - tests/repositories/inMemoryUserRepository.test.ts
+      - tests/services/userService.test.ts
+      - tests/controllers/userController.test.ts
+    notes: "GET /api/users devuelve arreglo con los usuarios y arreglo vacio cuando no hay registros."
+  CA005:
+    status: PASS
+    tests:
+      - tests/services/userService.test.ts
+      - tests/controllers/userController.test.ts
+    notes: "GET /:id existente 200; inexistente 404 USER_NOT_FOUND."
+  CA006:
+    status: PASS
+    tests:
+      - tests/services/userService.test.ts
+      - tests/controllers/userController.test.ts
+    notes: "PUT /:id parcial actualiza name/email, conserva email propio, detecta conflicto 409, payload invalido 400 e inexistente 404."
+  CA007:
+    status: PASS
+    tests:
+      - tests/repositories/inMemoryUserRepository.test.ts
+      - tests/controllers/userController.test.ts
+    notes: "DELETE /:id existente 204 sin body y el recurso deja de existir; inexistente 404."
+  CA008:
+    status: PASS
+    tests:
+      - tests/controllers/userController.test.ts
+    notes: "Contrato de error uniforme { error: { code, message, details? } } en 400/404/409/500, sin stack trace ni datos sensibles."
+findings:
+  fatal: []
+  acceptable:
+    - "OBSERVACION: uuid@10 aparece deprecado en npm install (funcional; se recomienda migrar a crypto.randomUUID en un cambio posterior)."
+    - "OBSERVACION: npm install reporta 1 vulnerabilidad moderada en dependencias de desarrollo (transitivas de ESLint 8); no afecta al runtime de la API."
+    - "OBSERVACION: dos lineas sin cubrir (userController.ts:48 y errors.ts:44) y rama no cubierta en userValidator.ts; cobertura global muy por encima del minimo (80/70)."
+    - "OBSERVACION: no se ejecuto analisis SonarQube; campo sonarqube.gate queda PENDING."
+    - "OBSERVACION: RFP-003 (templates genericos para artefactos Node) aceptado como riesgo aceptable en la revision del plan."
+recommendation:
+  next: code_review
