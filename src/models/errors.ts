@@ -8,13 +8,16 @@
  * { error: { code, message, details? } }
  *
  * Codes: VALIDATION_ERROR (400), USER_NOT_FOUND (404),
- * EMAIL_ALREADY_EXISTS (409), INTERNAL_ERROR (500).
+ * EMAIL_ALREADY_EXISTS (409), BOOK_NOT_FOUND (404),
+ * ISBN_ALREADY_EXISTS (409), INTERNAL_ERROR (500).
  */
 
 export type ErrorCode =
   | 'VALIDATION_ERROR'
   | 'USER_NOT_FOUND'
   | 'EMAIL_ALREADY_EXISTS'
+  | 'BOOK_NOT_FOUND'
+  | 'ISBN_ALREADY_EXISTS'
   | 'INTERNAL_ERROR';
 
 /** Field level detail attached to a validation error. */
@@ -63,6 +66,26 @@ export class ConflictError extends AppError {
   public readonly statusCode = 409;
 
   constructor(message = 'Email already exists') {
+    super(message);
+  }
+}
+
+/** Thrown when a referenced book does not exist (404). */
+export class BookNotFoundError extends AppError {
+  public readonly code: ErrorCode = 'BOOK_NOT_FOUND';
+  public readonly statusCode = 404;
+
+  constructor(message = 'Book not found') {
+    super(message);
+  }
+}
+
+/** Thrown when an ISBN is already registered by another book (409). */
+export class IsbnConflictError extends AppError {
+  public readonly code: ErrorCode = 'ISBN_ALREADY_EXISTS';
+  public readonly statusCode = 409;
+
+  constructor(message = 'ISBN already exists') {
     super(message);
   }
 }

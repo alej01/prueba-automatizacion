@@ -1,0 +1,85 @@
+version: 2
+verification:
+  status: APPROVED_WITH_OBSERVATIONS
+  date: "2026-10-01"
+  commit: fbd9040cf14eb96ec25acb2a235ed082d8b4419e
+quality_gate:
+  passed: true
+tests:
+  total: 115
+  passed: 115
+  failed: 0
+  skipped: 0
+coverage:
+  line: 99.31
+  branch: 98.3
+sonarqube:
+  gate: PENDING
+  bugs: 0
+  vulnerabilities: 0
+  smells: 0
+criteria:
+  CA001:
+    status: PASS
+    tests:
+      - tests/controllers/bookController.test.ts
+      - tests/services/bookService.test.ts
+    notes: POST /api/books responde 201 con id UUID v4, isbn normalizado y publishedYear; el libro queda recuperable por id.
+  CA002:
+    status: PASS
+    tests:
+      - tests/controllers/bookController.test.ts
+      - tests/services/bookService.test.ts
+      - tests/repositories/inMemoryBookRepository.test.ts
+    notes: ISBN duplicado (sobre forma normalizada) responde 409 ISBN_ALREADY_EXISTS y no crea un segundo libro.
+  CA003:
+    status: PASS
+    tests:
+      - tests/controllers/bookController.test.ts
+      - tests/validators/validateBody.test.ts
+    notes: 400 VALIDATION_ERROR con details[].field para title vacio, isbn con checksum invalido, publishedYear fuera de rango y campos desconocidos.
+  CA004:
+    status: PASS
+    tests:
+      - tests/controllers/bookController.test.ts
+      - tests/repositories/inMemoryBookRepository.test.ts
+    notes: GET /api/books devuelve 200 con arreglo vacio y con datos.
+  CA005:
+    status: PASS
+    tests:
+      - tests/controllers/bookController.test.ts
+      - tests/services/bookService.test.ts
+    notes: GET /api/books/:id responde 200 con el libro y 404 BOOK_NOT_FOUND si no existe.
+  CA006:
+    status: PASS
+    tests:
+      - tests/controllers/bookController.test.ts
+      - tests/services/bookService.test.ts
+    notes: PUT parcial actualiza title y refresca updatedAt conservando id/createdAt; 409 por ISBN ajeno; 400 sin campos; 404 si no existe.
+  CA007:
+    status: PASS
+    tests:
+      - tests/controllers/bookController.test.ts
+      - tests/repositories/inMemoryBookRepository.test.ts
+    notes: DELETE responde 204 sin body y 404 BOOK_NOT_FOUND; GET posterior devuelve 404.
+  CA008:
+    status: PASS
+    tests:
+      - tests/controllers/bookController.test.ts
+      - tests/validators/validateBody.test.ts
+    notes: "Errores de libros respetan el contrato uniforme (error.code/message/details) sin stack traces; errorMiddleware registrado ultimo."
+  CA009:
+    status: PASS
+    tests:
+      - tests/controllers/userController.test.ts
+      - tests/controllers/bookController.test.ts
+    notes: Las 21 pruebas existentes de usuarios pasan sin cambios y /api/users mantiene rutas y codigos de error.
+findings:
+  fatal: []
+  acceptable:
+    - "PREEXISTENTE: `npm run format:check` falla en 16 ficheros del repo (CRLF vs LF). Ninguno de los ficheros nuevos de libros esta afectado (todos pasan Prettier); la condicion existia antes del feature."
+    - "PREEXISTENTE/OPERATIVO: no hay SonarQube local disponible; el gate se registra como PENDING sin bloquear (no forma parte de los comandos de validacion del feature)."
+    - "OBSERVACION: el esquema feature.manifest.schema.json no admite `last_execution.apply_package` ni `last_updated`; el estado de paquete se registra de forma autoritativa en 08-work-packages.yml."
+    - "OBSERVACION: review_feature_plan dejo observaciones no bloqueantes RFP-001..RFP-004 (checksum ISBN, publishedYear null, ano dinamico en tests, CA009 cubierto por T008), todas trazadas y verificadas en la implementacion."
+recommendation:
+  next: code_review

@@ -1,0 +1,43 @@
+version: 2
+feature:
+  id: FEAT-0002
+  name: crud-libro-memoria
+  status: DONE
+created:
+  date: "2026-10-01"
+  author: prepare_feature
+workflow:
+  current_stage: DONE
+  next_stage: DONE
+progress:
+  requirements:
+    total: 19
+    completed: 19
+  tasks:
+    total: 9
+    completed: 9
+    blocked: 0
+  work_packages:
+    total: 7
+    completed: 7
+last_execution:
+  enrich:
+    status: COMPLETED
+  new_feature:
+    status: COMPLETED
+  review_plan:
+    status: APPROVED
+  apply:
+    task: T009
+    status: COMPLETED
+  verify:
+    status: APPROVED_WITH_OBSERVATIONS
+  code_review:
+    status: APPROVED_WITH_OBSERVATIONS
+references:
+  proposal: 01-propuesta.md
+  requirements: 02-requisitos-escenarios.md
+  design: 03-diseno-tecnico.md
+  adr: 04-adr.md
+  tasks: 05-tasks.yml
+  packages: 08-work-packages.yml
