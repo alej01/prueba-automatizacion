@@ -1,0 +1,113 @@
+version: 2
+packages:
+  WP01:
+    name: Domain Contracts
+    status: COMPLETED
+    objective: "Definir los contratos de dominio del recurso reserva (modelo Reservation, ReservationStatus, CreateReservationRequest) y ampliar el catalogo de errores con RESERVATION_NOT_FOUND, RESERVATION_CONFLICT y BOOK_ALREADY_RESERVED sin alterar los codigos existentes de usuarios y libros. Paquete de tarea unica justificado: establece los tipos compartidos sobre los que se apoyan el resto de capas y no se agrupa con persistencia ni con negocio para no mezclar capas."
+    tasks: [T001]
+    dependencies: []
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - models_compile
+      - reservation_type_declares_status_and_references
+      - reservation_error_codes_defined_with_status
+      - existing_user_and_book_error_codes_unchanged
+    risk:
+      level: LOW
+
+  WP02:
+    name: In-Memory Persistence
+    status: COMPLETED
+    objective: "Implementar la persistencia en memoria de reservas detras de la interfaz ReservationRepository, incluyendo las busquedas de reservas activas por libro y por par usuario+libro que ignoran las reservas liberadas. Paquete de tarea unica justificado: la persistencia no se agrupa con la logica de negocio ni con la API HTTP para no mezclar infraestructura con negocio ni presentacion."
+    tasks: [T002]
+    dependencies: [WP01]
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - compiles_without_errors
+      - repository_interface_implemented
+      - active_lookup_ignores_released_reservations
+      - new_instance_starts_empty
+    risk:
+      level: LOW
+
+  WP03:
+    name: Reservation Business Logic
+    status: COMPLETED
+    objective: "Implementar las reglas de negocio de reservas en ReservationService (crear, listar, consultar y liberar) aplicando RN001-RN008 y verificando la existencia de usuario y libro a traves de sus interfaces de repositorio, sin dependencia de HTTP. Paquete de tarea unica justificado: el servicio no se agrupa con persistencia ni con presentacion para no mezclar negocio con infraestructura."
+    tasks: [T003]
+    dependencies: [WP01, WP02]
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - compiles_without_errors
+      - service_has_no_http_dependency
+      - missing_user_and_book_reference_errors_raised
+      - book_already_reserved_and_duplicate_errors_raised
+      - release_sets_status_released_and_refreshes_updated_at
+    risk:
+      level: MEDIUM
+
+  WP04:
+    name: HTTP Presentation Layer
+    status: COMPLETED
+    objective: "Exponer el recurso reserva mediante esquemas Zod estrictos reutilizando validateBody, un controlador delgado que delega en ReservationService, y el cableado de reservationRoutes y app.ts con los repositorios compartidos de usuario y libro, preservando rutas, orden de middleware y contrato de error existentes."
+    tasks: [T004, T005]
+    dependencies: [WP03]
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - reservation_schemas_reject_invalid_payloads
+      - controller_contains_no_business_logic
+      - all_reservation_endpoints_registered
+      - user_and_book_routes_preserved
+      - error_middleware_still_registered_last
+    risk:
+      level: MEDIUM
+
+  WP05:
+    name: Test Suite
+    status: COMPLETED
+    objective: "Cubrir con pruebas unitarias las reglas del ReservationService (repositorios mockeados) y el repositorio en memoria de reservas (instancia real), y con pruebas de integracion los endpoints de reservas con Supertest, incluyendo el contrato de error uniforme, el filtro por userId y la regresion de usuarios y libros."
+    tasks: [T006, T007]
+    dependencies: [WP02, WP03, WP04]
+    validation:
+      command: npx jest tests/services tests/repositories tests/controllers --coverage
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - all_tests_pass
+      - coverage_statements_at_least_80
+      - coverage_branches_at_least_70
+      - all_endpoints_covered
+      - error_contract_verified
+      - existing_user_and_book_controller_tests_pass
+    risk:
+      level: MEDIUM
+
+  WP06:
+    name: Documentation
+    status: COMPLETED
+    objective: "Documentar en el README los endpoints de reservas, el modelo Reservation con sus estados, las reglas de unicidad y el catalogo de errores ampliado, preservando la documentacion de usuarios y libros. Paquete de tarea unica justificado: la documentacion es una responsabilidad propia y no se mezcla con la implementacion ni con las pruebas."
+    tasks: [T008]
+    dependencies: [WP04]
+    validation:
+      command: npm run lint
+      result: PASSED
+    done_when:
+      - all_tasks_completed
+      - reservation_endpoints_documented
+      - reservation_error_codes_documented
+      - reservation_status_rules_documented
+      - user_and_book_api_documentation_preserved
+    risk:
+      level: LOW

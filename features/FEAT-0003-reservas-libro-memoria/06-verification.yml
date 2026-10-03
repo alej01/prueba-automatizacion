@@ -1,0 +1,57 @@
+version: 2
+verification:
+  status: APPROVED_WITH_OBSERVATIONS
+  date: "2026-10-02"
+  commit: 4763fa1
+quality_gate:
+  passed: true
+tests:
+  total: 164
+  passed: 164
+  failed: 0
+  skipped: 0
+coverage:
+  line: 99.51
+  branch: 98.73
+sonarqube:
+  gate: PENDING
+  bugs: 0
+  vulnerabilities: 0
+  smells: 0
+criteria:
+  CA001:
+    status: PASS
+    tests: [reservationService.test.ts, reservationController.test.ts]
+  CA002:
+    status: PASS
+    tests: [reservationService.test.ts, reservationController.test.ts]
+  CA003:
+    status: PASS
+    tests: [reservationService.test.ts]
+    notes: "RN003 se cubre aislado en el servicio; en integracion prevalece RN002 (ver hallazgo V001)."
+  CA004:
+    status: PASS
+    tests: [reservationService.test.ts, reservationController.test.ts]
+  CA005:
+    status: PASS
+    tests: [reservationController.test.ts]
+  CA006:
+    status: PASS
+    tests: [reservationService.test.ts, reservationController.test.ts]
+  CA007:
+    status: PASS
+    tests: [reservationService.test.ts, reservationController.test.ts]
+  CA008:
+    status: PASS
+    tests: [reservationController.test.ts]
+  CA009:
+    status: PASS
+    tests: [userController.test.ts, bookController.test.ts, reservationController.test.ts]
+findings:
+  fatal: []
+  acceptable:
+    - "V001 OBSERVACION (INTRODUCIDO): RN002 (BOOK_ALREADY_RESERVED) se evalua antes que RN003 (RESERVATION_CONFLICT) en ReservationService.create; un POST duplicado del mismo par usuario+libro con el libro ya reservado responde BOOK_ALREADY_RESERVED. Coherente con CA002/CA003; RN003 se prueba aislado."
+    - "V002 RIESGO ACEPTABLE (INTRODUCIDO): DELETE /api/reservations/:id responde 200 con la reserva RELEASED (no 204) por ADR003; difiere del DELETE de usuarios/libros, documentado y testeado."
+    - "V003 RIESGO ACEPTABLE (INTRODUCIDO): almacenamiento de reservas en memoria y volatil entre reinicios (RN008), coherente con usuarios y libros."
+recommendation:
+  next: code_review

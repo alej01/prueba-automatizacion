@@ -1,11 +1,13 @@
-# CRUD de Usuarios y Libros en Memoria
+# CRUD de Usuarios y Libros y Reservas en Memoria
 
-API REST para la gestion de usuarios y libros con almacenamiento **en memoria**,
-construida con Node.js, TypeScript (strict), Express y Zod.
+API REST para la gestion de usuarios, libros y reservas con almacenamiento
+**en memoria**, construida con Node.js, TypeScript (strict), Express y Zod.
 
 El proyecto expone dos CRUDs sencillos: crear, listar, consultar, actualizar y
-eliminar usuarios (`/api/users`) y libros (`/api/books`). Los datos viven unicamente
-en memoria, por lo que se pierden al reiniciar el proceso.
+eliminar usuarios (`/api/users`) y libros (`/api/books`); ademas, un recurso de
+reservas (`/api/reservations`) para reservar un libro a un usuario y liberarlo.
+Los datos viven unicamente en memoria, por lo que se pierden al reiniciar el
+proceso.
 
 ## Stack y requisitos
 
@@ -67,7 +69,8 @@ PORT=4000 npm start
 ```
 
 Con el servidor en marcha, las bases de la API son
-`http://localhost:3000/api/users` y `http://localhost:3000/api/books`.
+`http://localhost:3000/api/users`, `http://localhost:3000/api/books` y
+`http://localhost:3000/api/reservations`.
 
 ## Pruebas
 
@@ -334,6 +337,137 @@ curl -X DELETE http://localhost:3000/api/books/9c8b7a65-4321-4f0e-9d8c-7b6a5f4e3
 
 `204 No Content` sin body. Si el id no existe, `404` con `BOOK_NOT_FOUND`.
 
+## Endpoints de reservas
+
+Base path: `/api/reservations`. Todas las respuestas con cuerpo usan
+`Content-Type: application/json`.
+
+| Metodo | Ruta | Body / Query | Exito | Errores |
+|---|---|---|---|---|
+| `POST` | `/api/reservations` | `{ "userId", "bookId" }` | `201` + `Reservation` | `400`, `404`, `409` |
+| `GET` | `/api/reservations` | query opcional `userId` | `200` + `Reservation[]` | `400`, `404` |
+| `GET` | `/api/reservations/:id` | — | `200` + `Reservation` | `404` |
+| `DELETE` | `/api/reservations/:id` | — | `200` + `Reservation` (`RELEASED`) | `404`, `409` |
+
+Modelo `Reservation`:
+
+```json
+{
+  "id": "b7a6c5d4-3e2f-4a1b-9c8d-7e6f5a4b3c2d",
+  "userId": "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+  "bookId": "9c8b7a65-4321-4f0e-9d8c-7b6a5f4e3d2c",
+  "status": "ACTIVE",
+  "createdAt": "2026-10-02T20:00:00.000Z",
+  "updatedAt": "2026-10-02T20:00:00.000Z"
+}
+```
+
+El campo `status` es `ACTIVE` o `RELEASED`:
+
+- `ACTIVE`: la reserva esta vigente; el libro esta reservado para ese usuario.
+- `RELEASED`: la reserva fue liberada; deja de contar como activa, por lo que el
+  libro vuelve a estar disponible y el mismo par usuario+libro puede volver a
+  reservarse.
+
+Reglas aplicables a los payloads:
+
+- `userId` y `bookId`: obligatorios, cada uno validado como UUID v4.
+- El `userId` debe corresponder a un usuario existente (`404 USER_NOT_FOUND`) y
+  el `bookId` a un libro existente (`404 BOOK_NOT_FOUND`).
+- Los esquemas son estrictos: los campos desconocidos se rechazan con `400`.
+- El filtro `userId` del listado es opcional; si se envia, debe ser un UUID v4
+  (`400 VALIDATION_ERROR` en caso contrario) y el usuario debe existir
+  (`404 USER_NOT_FOUND`).
+
+Reglas de unicidad:
+
+- Un libro no puede tener dos reservas activas. Si el libro ya tiene una reserva
+  `ACTIVE`, un nuevo alta responde `409 BOOK_ALREADY_RESERVED`.
+- Un par usuario+libro no puede tener una reserva activa duplicada. Si ese par ya
+  tiene una reserva `ACTIVE`, el alta responde `409 RESERVATION_CONFLICT`.
+  (Cuando se intenta reservar un libro ya reservado por el mismo usuario, la
+  comprobacion de libro ya reservado tiene precedencia y la respuesta es
+  `BOOK_ALREADY_RESERVED`.)
+- Una reserva liberada (`RELEASED`) no bloquea ni el libro ni el par usuario+libro.
+
+### Ejemplos de request / response
+
+#### Crear una reserva
+
+```bash
+curl -X POST http://localhost:3000/api/reservations \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d","bookId":"9c8b7a65-4321-4f0e-9d8c-7b6a5f4e3d2c"}'
+```
+
+`201 Created`:
+
+```json
+{
+  "id": "b7a6c5d4-3e2f-4a1b-9c8d-7e6f5a4b3c2d",
+  "userId": "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+  "bookId": "9c8b7a65-4321-4f0e-9d8c-7b6a5f4e3d2c",
+  "status": "ACTIVE",
+  "createdAt": "2026-10-02T20:00:00.000Z",
+  "updatedAt": "2026-10-02T20:00:00.000Z"
+}
+```
+
+El `id` lo genera el servidor (UUID v4) y la reserva comienza en estado `ACTIVE`.
+
+#### Listar reservas
+
+```bash
+curl http://localhost:3000/api/reservations
+```
+
+`200 OK` con un array `Reservation[]` con todas las reservas (activas y liberadas).
+
+Para filtrar por usuario:
+
+```bash
+curl "http://localhost:3000/api/reservations?userId=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+```
+
+`200 OK` con las reservas de ese usuario (de cualquier estado). Si el `userId` no
+es un UUID valido, `400 VALIDATION_ERROR`; si no existe, `404 USER_NOT_FOUND`.
+
+#### Consultar una reserva
+
+```bash
+curl http://localhost:3000/api/reservations/b7a6c5d4-3e2f-4a1b-9c8d-7e6f5a4b3c2d
+```
+
+`200 OK` con el objeto `Reservation`. Si el id no existe, `404` con
+`RESERVATION_NOT_FOUND`.
+
+#### Liberar una reserva
+
+```bash
+curl -X DELETE http://localhost:3000/api/reservations/b7a6c5d4-3e2f-4a1b-9c8d-7e6f5a4b3c2d
+```
+
+`200 OK` con la reserva en estado `RELEASED` y `updatedAt` refrescado:
+
+```json
+{
+  "id": "b7a6c5d4-3e2f-4a1b-9c8d-7e6f5a4b3c2d",
+  "userId": "3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+  "bookId": "9c8b7a65-4321-4f0e-9d8c-7b6a5f4e3d2c",
+  "status": "RELEASED",
+  "createdAt": "2026-10-02T20:00:00.000Z",
+  "updatedAt": "2026-10-02T20:05:00.000Z"
+}
+```
+
+Si el id no existe, `404` con `RESERVATION_NOT_FOUND`. Si la reserva ya estaba
+`RELEASED`, responde `409` con `RESERVATION_CONFLICT`.
+
+> **Nota:** a diferencia de `DELETE` en usuarios y libros (que eliminan fisicamente
+> y responden `204`), `DELETE` en reservas **no elimina** el registro: lo pasa a
+> `RELEASED` y responde `200` con la reserva. Es una diferencia intencional
+> (decision `ADR003`): el recurso sigue existiendo y su historico se preserva.
+
 ## Contrato de error uniforme
 
 Todos los errores comparten la misma forma:
@@ -357,10 +491,14 @@ Todos los errores comparten la misma forma:
 | `EMAIL_ALREADY_EXISTS` | `409` | El email ya pertenece a otro usuario. |
 | `BOOK_NOT_FOUND` | `404` | El id de libro no existe. |
 | `ISBN_ALREADY_EXISTS` | `409` | El ISBN ya pertenece a otro libro (comparado en forma normalizada). |
+| `RESERVATION_NOT_FOUND` | `404` | El id de reserva no existe. |
+| `RESERVATION_CONFLICT` | `409` | El par usuario+libro ya tiene una reserva activa, o la reserva a liberar ya estaba `RELEASED`. |
+| `BOOK_ALREADY_RESERVED` | `409` | El libro ya tiene otra reserva activa. |
 | `INTERNAL_ERROR` | `500` | Fallo no controlado; no expone stack trace ni detalles internos. |
 
-`VALIDATION_ERROR` se comparte entre usuarios y libros: en libros tambien cubre
-ISBN invalido (digito de control incorrecto) y `publishedYear` fuera de rango.
+`VALIDATION_ERROR` se comparte entre usuarios, libros y reservas: en libros tambien
+cubre ISBN invalido (digito de control incorrecto) y `publishedYear` fuera de rango;
+en reservas cubre UUIDs mal formados en el body o en el filtro `userId` del listado.
 `USER_NOT_FOUND` lo emite tambien la ruta no encontrada (middleware `notFound`).
 
 Ejemplos:
@@ -435,6 +573,39 @@ Ejemplos:
 }
 ```
 
+`409 Conflict` (libro ya reservado):
+
+```json
+{
+  "error": {
+    "code": "BOOK_ALREADY_RESERVED",
+    "message": "Book already reserved"
+  }
+}
+```
+
+`409 Conflict` (reserva duplicada para el mismo par usuario+libro):
+
+```json
+{
+  "error": {
+    "code": "RESERVATION_CONFLICT",
+    "message": "Reservation already exists for this user and book"
+  }
+}
+```
+
+`404 Not Found` (reserva inexistente):
+
+```json
+{
+  "error": {
+    "code": "RESERVATION_NOT_FOUND",
+    "message": "Reservation not found"
+  }
+}
+```
+
 ## Fuera de alcance
 
 La autenticacion y la gestion de contrasenas quedan **explicitamente fuera de alcance**:
@@ -451,6 +622,11 @@ a `id`, `title`, `author`, `isbn`, `publishedYear` y marcas de tiempo; los campo
 bibliograficos adicionales (editorial, genero, stock, etc.) quedan fuera de alcance
 segun el ADR006 del feature `FEAT-0002-crud-libro-memoria`.
 
+Para las reservas tambien aplica la misma exclusion (sin autenticacion ni
+autorizacion): cualquier cliente puede reservar un libro para cualquier usuario
+existente y liberarla. Esta decision esta registrada en el ADR005 del feature
+`FEAT-0003-reservas-libro-memoria`.
+
 ## Arquitectura
 
 Separacion por capas, con dependencias dirigidas hacia el dominio:
@@ -461,24 +637,32 @@ src/
 ├── server.ts                  # bootstrap HTTP y lectura de PORT
 ├── controllers/
 │   ├── userController.ts      # capa HTTP delgada de usuarios
-│   └── bookController.ts      # capa HTTP delgada de libros
+│   ├── bookController.ts      # capa HTTP delgada de libros
+│   └── reservationController.ts # capa HTTP delgada de reservas
 ├── services/
 │   ├── userService.ts         # reglas de negocio de usuarios (sin HTTP)
-│   └── bookService.ts         # reglas de negocio de libros (sin HTTP)
-├── repositories/              # UserRepository/InMemoryUserRepository y
-│                              # BookRepository/InMemoryBookRepository (Map)
-├── models/                    # User, Book y clases de error de dominio
+│   ├── bookService.ts         # reglas de negocio de libros (sin HTTP)
+│   └── reservationService.ts  # reglas de negocio de reservas (sin HTTP)
+├── repositories/              # UserRepository/InMemoryUserRepository,
+│                              # BookRepository/InMemoryBookRepository y
+│                              # ReservationRepository/InMemoryReservationRepository (Map)
+├── models/                    # User, Book, Reservation (ACTIVE|RELEASED) y clases de error de dominio
 ├── middleware/                # errorMiddleware y notFoundMiddleware
 ├── routes/
 │   ├── userRoutes.ts          # cinco endpoints de usuarios
-│   └── bookRoutes.ts          # cinco endpoints de libros
+│   ├── bookRoutes.ts          # cinco endpoints de libros
+│   └── reservationRoutes.ts   # cuatro endpoints de reservas
 ├── validators/
 │   ├── validateBody.ts        # middleware compartido de validacion
 │   ├── userValidator.ts       # esquemas Zod de usuarios
-│   └── bookValidator.ts       # esquemas Zod de libros (ISBN)
+│   ├── bookValidator.ts       # esquemas Zod de libros (ISBN)
+│   └── reservationValidator.ts # esquemas Zod de reservas (UUID v4)
 └── utils/idGenerator.ts       # generacion de UUID v4
 ```
 
-El almacenamiento esta detras de las interfaces `UserRepository` y
-`BookRepository`. Sustituir la persistencia en memoria por una real solo requiere
-una nueva implementacion de cada interfaz, sin tocar los servicios.
+El almacenamiento esta detras de las interfaces `UserRepository`,
+`BookRepository` y `ReservationRepository`. Sustituir la persistencia en memoria
+por una real solo requiere una nueva implementacion de cada interfaz, sin tocar
+los servicios. `ReservationService` depende de `ReservationRepository` y tambien
+de las abstracciones `UserRepository`/`BookRepository` para verificar la
+existencia de usuario y libro, sin acoplarse a sus implementaciones concretas.

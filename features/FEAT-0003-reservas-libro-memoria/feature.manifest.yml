@@ -1,0 +1,43 @@
+version: 2
+feature:
+  id: FEAT-0003
+  name: reservas-libro-memoria
+  status: ARCHIVE_PENDING
+created:
+  date: "2026-10-02"
+  author: prepare_feature
+workflow:
+  current_stage: ARCHIVE
+  next_stage: COMMIT
+progress:
+  requirements:
+    total: 19
+    completed: 0
+  tasks:
+    total: 8
+    completed: 8
+    blocked: 0
+  work_packages:
+    total: 6
+    completed: 6
+last_execution:
+  enrich:
+    status: COMPLETED
+  new_feature:
+    status: COMPLETED
+  review_plan:
+    status: APPROVED
+  apply:
+    task: T008
+    status: COMPLETED
+  verify:
+    status: APPROVED_WITH_OBSERVATIONS
+  code_review:
+    status: APPROVED_WITH_OBSERVATIONS
+references:
+  proposal: 01-propuesta.md
+  requirements: 02-requisitos-escenarios.md
+  design: 03-diseno-tecnico.md
+  adr: 04-adr.md
+  tasks: 05-tasks.yml
+  packages: 08-work-packages.yml

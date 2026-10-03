@@ -1,0 +1,286 @@
+version: 2
+tasks:
+  T001:
+    name: Add Reservation domain model and reservation error types
+    status: COMPLETED
+    layer: domain
+    artifact_type: node.model
+    template:
+      id: templates.readme
+      path: templates/README.md
+      version: 1
+    objective: Definir las interfaces Reservation, ReservationStatus y CreateReservationRequest, y ampliar el catalogo de errores con RESERVATION_NOT_FOUND, RESERVATION_CONFLICT y BOOK_ALREADY_RESERVED sin alterar los codigos existentes.
+    requirements: [RN004, RN006, RN010]
+    design: [DES002, DES004]
+    decisions: [ADR002, ADR003]
+    expected_output:
+      files:
+        - src/models/reservation.ts
+        - src/models/errors.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - models_compile
+        - reservation_type_declares_status_and_references
+        - reservation_error_codes_defined_with_status
+        - existing_user_and_book_error_codes_unchanged
+    completed_at: "2026-10-02T10:30:00-05:00"
+    evidence:
+      - "src/models/reservation.ts define ReservationStatus = 'ACTIVE' | 'RELEASED', Reservation (id, userId, bookId, status, createdAt, updatedAt) y CreateReservationRequest (userId, bookId) segun DES002."
+      - "src/models/errors.ts ampliado aditivamente: ErrorCode incorpora RESERVATION_NOT_FOUND, RESERVATION_CONFLICT y BOOK_ALREADY_RESERVED, y se anadieron ReservationNotFoundError (404), ReservationConflictError (409) y BookAlreadyReservedError (409) extendiendo AppError."
+      - "Los codigos existentes (USER_NOT_FOUND, EMAIL_ALREADY_EXISTS, BOOK_NOT_FOUND, ISBN_ALREADY_EXISTS) y sus clases no se modificaron (RN010)."
+      - "npx tsc --noEmit finaliza sin errores."
+    modified_files:
+      - src/models/reservation.ts
+      - src/models/errors.ts
+  T002:
+    name: Implement in-memory reservation repository
+    status: COMPLETED
+    layer: repository
+    artifact_type: node.repository
+    template:
+      id: node.repository
+      path: templates/node/repository.md
+      version: 1
+    objective: Implementar ReservationRepository e InMemoryReservationRepository con Map, incluyendo save, findById, findAll, findActiveByBook, findActiveByUserAndBook y findByUser.
+    requirements: [RN002, RN003, RN005, RN007, RN008]
+    design: [DES006]
+    decisions: [ADR002, ADR003]
+    expected_output:
+      files:
+        - src/repositories/inMemoryReservationRepository.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - compiles_without_errors
+        - repository_interface_implemented
+        - active_lookup_ignores_released_reservations
+        - new_instance_starts_empty
+    completed_at: "2026-10-02T11:15:00-05:00"
+    evidence:
+      - "src/repositories/inMemoryReservationRepository.ts define la interfaz ReservationRepository con save, findById, findAll, findActiveByBook, findActiveByUserAndBook y findByUser, todos devolviendo Promise (DES006/ADR002)."
+      - "InMemoryReservationRepository implementa la interfaz sobre un Map<string, Reservation> privado; cada instancia arranca vacia (RN008)."
+      - "findActiveByBook y findActiveByUserAndBook filtran por status === 'ACTIVE', por lo que ignoran las reservas RELEASED y liberan el libro y el par usuario+libro (RN002, RN003, RN005)."
+      - "findByUser devuelve todas las reservas del usuario sin filtrar por estado (RN007); findAll devuelve todas las reservas."
+      - "npx tsc --noEmit finaliza sin errores."
+    modified_files:
+      - src/repositories/inMemoryReservationRepository.ts
+  T003:
+    name: Implement ReservationService with reservation business rules
+    status: COMPLETED
+    layer: service
+    artifact_type: node.service
+    template:
+      id: node.service
+      path: templates/node/service.md
+      version: 1
+    objective: Implementar ReservationService con create, list, getById y release aplicando las reglas RN001-RN008, dependiendo solo de ReservationRepository, UserRepository y BookRepository, sin dependencia de HTTP.
+    requirements: [RN001, RN002, RN003, RN004, RN005, RN006, RN007]
+    design: [DES007]
+    decisions: [ADR002, ADR003]
+    expected_output:
+      files:
+        - src/services/reservationService.ts
+    validation:
+      command: npx tsc --noEmit
+      done_when:
+        - compiles_without_errors
+        - service_has_no_http_dependency
+        - missing_user_and_book_reference_errors_raised
+        - book_already_reserved_and_duplicate_errors_raised
+        - release_sets_status_released_and_refreshes_updated_at
+    completed_at: "2026-10-02T12:00:00-05:00"
+    evidence:
+      - "src/services/reservationService.ts define ReservationService con inyeccion por constructor de ReservationRepository, UserRepository y BookRepository, replicando el estilo de bookService.ts/userService.ts y sin dependencia de HTTP/Express (ADR002, DES007)."
+      - "create({ userId, bookId }) valida la existencia del usuario (findById -> NotFoundError) y del libro (findById -> BookNotFoundError); verifica que el libro no tenga reserva activa (findActiveByBook -> BookAlreadyReservedError, RN002) y que el par usuario+libro no tenga reserva activa (findActiveByUserAndBook -> ReservationConflictError, RN003)."
+      - "create genera id con generateId() (UUID v4 de src/utils/idGenerator.ts), fija status 'ACTIVE' y createdAt/updatedAt con new Date().toISOString() (RN004)."
+      - "list(userId?) sin filtro devuelve findAll(); con userId valida su existencia (findById -> NotFoundError) y devuelve findByUser(userId) (RN007)."
+      - "getById(id) devuelve la reserva o lanza ReservationNotFoundError (RN006)."
+      - "release(id) lanza ReservationNotFoundError si la reserva no existe; lanza ReservationConflictError si ya esta RELEASED; en caso contrario persiste status 'RELEASED' con updatedAt refrescado (RN005)."
+      - "npx tsc --noEmit finaliza sin errores."
+    modified_files:
+      - src/services/reservationService.ts
+  T004:
+    name: Add Zod reservation schemas and thin reservation controller
+    status: COMPLETED
+    layer: validator
+    artifact_type: node.validator
+    template:
+      id: node.validator
+      path: templates/node/validator.md
+      version: 1
+    objective: Definir createReservationSchema y reservationListQuerySchema estrictos (UUID v4) reutilizando validateBody, e implementar reservationController delegando en ReservationService y usando next(error).
+    requirements: [RN001, RN007, RN009]
+    design: [DES005, DES007]
+    decisions: [ADR004]
+    expected_output:
+      files:
+        - src/validators/reservationValidator.ts
+        - src/controllers/reservationController.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - compiles_without_errors
+        - reservation_schemas_reject_invalid_payloads
+        - unknown_fields_rejected
+        - controller_contains_no_business_logic
+        - success_codes_201_200_applied_and_errors_forwarded_with_next
+    completed_at: "2026-10-02T13:10:00-05:00"
+    evidence:
+      - "src/validators/reservationValidator.ts define createReservationSchema como objeto .strict() con userId y bookId obligatorios validados como UUID v4 canonico (RN001, RN009) y reservationListQuerySchema como objeto .strict() con userId opcional UUID v4 (RN007, DES005)."
+      - "La validacion de query reutiliza el middleware compartido validateBody mediante el adaptador validateQuery, que aplica validateBody sobre { ...req.query } y asigna el filtro normalizado de vuelta a req.query, manteniendo un unico punto de traduccion de ZodError a ValidationError (ADR004)."
+      - "Los esquemas son strict(), por lo que rechazan campos desconocidos con 400 VALIDATION_ERROR; la respuesta de error la renderiza el errorMiddleware central (DES004)."
+      - "src/controllers/reservationController.ts implementa createReservationController (create/list/getById/release) sin logica de negocio: delega en ReservationService y usa next(error) en todos los handlers; create responde 201, list/getById/release responden 200 (DES003/DES007)."
+      - "list reenvia el filtro req.query.userId al servicio tal como lo normaliza validateQuery (RN007)."
+      - "npx tsc --noEmit finaliza sin errores."
+    modified_files:
+      - src/validators/reservationValidator.ts
+      - src/controllers/reservationController.ts
+  T005:
+    name: Add reservation routes and wire them into the Express app
+    status: COMPLETED
+    layer: routes
+    artifact_type: node.routes
+    template:
+      id: node.routes
+      path: templates/node/routes.md
+      version: 1
+    objective: Definir reservationRoutes con los endpoints de reservar, listar (con query userId), consultar y liberar, aplicar validateBody, y montar /api/reservations en app.ts inyectando los repositorios compartidos de usuario y libro.
+    requirements: [RN007, RN010]
+    design: [DES003, DES009]
+    decisions: [ADR002]
+    expected_output:
+      files:
+        - src/routes/reservationRoutes.ts
+        - src/app.ts
+    validation:
+      command: npx tsc --noEmit
+      result: PASSED
+      done_when:
+        - compiles_without_errors
+        - all_reservation_endpoints_registered
+        - user_and_book_routes_preserved
+        - reservation_service_receives_shared_user_and_book_repositories
+        - error_middleware_still_registered_last
+    completed_at: "2026-10-02T13:30:00-05:00"
+    evidence:
+      - "src/routes/reservationRoutes.ts define createReservationRoutes con los cuatro endpoints de DES003: POST / -> validateBody(createReservationSchema) -> create (201); GET / -> validateQuery(reservationListQuerySchema) -> list (200); GET /:id -> getById (200); DELETE /:id -> release (200 con reserva RELEASED)."
+      - "El listado valida el query userId como UUID v4 mediante validateQuery, que reutiliza validateBody sobre { ...req.query } (RN007, RN009); un userId no-UUID responde 400 VALIDATION_ERROR y un usuario inexistente 404 USER_NOT_FOUND (via servicio)."
+      - "src/app.ts monta /api/reservations creando InMemoryReservationRepository y pasando al ReservationService las MISMAS instancias de userRepository y bookRepository usadas por los servicios de usuarios y libros (DES009/ADR002)."
+      - "El orden de middleware se preserva: express.json() -> routers (/api/users, /api/books, /api/reservations) -> notFoundMiddleware -> errorMiddleware (ultimo) (DES009)."
+      - "Las rutas y controladores de usuarios y libros no se modificaron (solo imports y composicion aditiva en app.ts); las 49 pruebas de integracion existentes de usuarios/libros siguen pasando (RN010, CA009)."
+      - "Smoke end-to-end verificado: POST -> 201, GET con filtro userId -> 200, GET con userId no-UUID -> 400 VALIDATION_ERROR, DELETE -> 200 RELEASED."
+      - "npx tsc --noEmit finaliza sin errores."
+    modified_files:
+      - src/routes/reservationRoutes.ts
+      - src/app.ts
+  T006:
+    name: Add ReservationService and reservation repository unit tests
+    status: COMPLETED
+    layer: test
+    artifact_type: node.test.unit
+    template:
+      id: templates.readme
+      path: templates/README.md
+      version: 1
+    objective: Cubrir las reglas del ReservationService con repositorios mockeados y el repositorio en memoria de reservas con instancia real.
+    requirements: [RN001, RN002, RN003, RN004, RN005, RN006, RN007, RN008]
+    design: [DES008]
+    decisions: [ADR002, ADR003, ADR004]
+    expected_output:
+      files:
+        - tests/services/reservationService.test.ts
+        - tests/repositories/inMemoryReservationRepository.test.ts
+    validation:
+      command: npx jest tests/services tests/repositories --coverage
+      result: PASSED
+      tests:
+        - "81 passed, 6 suites passed"
+      done_when:
+        - all_tests_pass
+        - coverage_statements_at_least_80
+        - coverage_branches_at_least_70
+    completed_at: "2026-10-02T14:20:00-05:00"
+    evidence:
+      - "tests/services/reservationService.test.ts cubre con repositorios mockeados las reglas RN001-RN008 (ESC-S01..ESC-S10, CA001-CA007): creacion ACTIVE con UUID v4 e ISO (RN004), existencia de usuario/libro (RN001), libro ya reservado (RN002), par usuario+libro duplicado (RN003), listado global y filtrado por userId (RN007), getById (RN006) y liberacion con refresco de updatedAt y conflicto sobre RELEASED (RN005)."
+      - "tests/repositories/inMemoryReservationRepository.test.ts usa una instancia real (ESC-I01..ESC-I06): arranque vacio (RN008), save/findById, findAll, findActiveByBook y findActiveByUserAndBook ignorando RELEASED (RN002/RN003/RN005) y findByUser sin filtrar por estado (RN007)."
+      - "npx jest tests/services tests/repositories --coverage: 81 tests passed / 81 total, 6 suites passed; cobertura agregada 97.94% statements, 95.91% branches, 97.87% functions, 97.94% lines (reservationService.ts y inMemoryReservationRepository.ts al 100%)."
+    modified_files:
+      - tests/services/reservationService.test.ts
+      - tests/repositories/inMemoryReservationRepository.test.ts
+  T007:
+    name: Add reservation controller integration tests with Supertest
+    status: COMPLETED
+    layer: test
+    artifact_type: node.test.controller
+    template:
+      id: node.test.controller
+      path: templates/node/controller-test.md
+      version: 1
+    objective: Cubrir los endpoints de reservas con Supertest verificando codigos de exito, el contrato de error uniforme, el filtro por userId y la regresion de usuarios y libros.
+    requirements: [RN001, RN002, RN003, RN005, RN007, RN009, RN010]
+    design: [DES008]
+    decisions: [ADR003, ADR004]
+    expected_output:
+      files:
+        - tests/controllers/reservationController.test.ts
+    validation:
+      command: npx jest tests/controllers --coverage
+      result: PASSED
+      tests:
+        - "72 passed, 3 suites passed"
+      done_when:
+        - all_endpoints_covered
+        - success_and_error_paths_tested
+        - error_contract_verified
+        - existing_user_and_book_controller_tests_pass
+    completed_at: "2026-10-02T14:45:00-05:00"
+    evidence:
+      - "tests/controllers/reservationController.test.ts usa Supertest sobre una app fresca por test via createApp() (stack real: rutas -> Zod -> controlador delgado -> ReservationService -> repositorios en memoria) y cubre ESC-P01..ESC-P11 / CA001..CA009."
+      - "Cubre todos los endpoints y codigos de exito: POST /api/reservations -> 201 recurso ACTIVE (UUID v4), GET /api/reservations -> 200 arreglo global y filtrado por ?userId, GET /api/reservations/:id -> 200, DELETE /api/reservations/:id -> 200 con status RELEASED y updatedAt refrescado."
+      - "Cubre los caminos de error y el contrato uniforme (CA008): 400 VALIDATION_ERROR con details (uuid mal formado, campos faltantes, campos desconocidos, filtro userId no-UUID), 404 USER_NOT_FOUND / BOOK_NOT_FOUND / RESERVATION_NOT_FOUND y 409 BOOK_ALREADY_RESERVED / RESERVATION_CONFLICT (liberacion repetida); se verifica la forma { error: { code, message } } sin stack traces."
+      - "Verifica el filtro por userId (RN007) y la regresion de usuarios y libros dentro de la misma app (RN010, CA009/ESC-P11): user CRUD (alta, email duplicado 409, detalle, listado) y book CRUD (alta, ISBN duplicado 409, detalle, DELETE 204)."
+      - "Nota de precedencia: para un par usuario+libro ya activo, create evalua RN002 (findActiveByBook) antes que RN003 (findActiveByUserAndBook), por lo que la API responde BOOK_ALREADY_RESERVED; el caso puro de RN003 se prueba aislado en tests/services/reservationService.test.ts (ESC-S05)."
+      - "npx jest tests/controllers --coverage: 72 tests passed / 72 total, 3 suites passed. npx jest: 164 tests passed / 164 total, 10 suites passed, 0 fallos."
+    modified_files:
+      - tests/controllers/reservationController.test.ts
+  T008:
+    name: Document the reservations API and update the README
+    status: COMPLETED
+    layer: docs
+    artifact_type: node.docs
+    template:
+      id: templates.readme
+      path: templates/README.md
+      version: 1
+    objective: Documentar en README los endpoints de reservas, el modelo Reservation con sus estados, las reglas de unicidad y el catalogo de errores ampliado, preservando la documentacion de usuarios y libros.
+    requirements: []
+    design: [DES003, DES004]
+    decisions: [ADR003]
+    expected_output:
+      files:
+        - README.md
+    validation:
+      command: npm run lint
+      result: PASSED
+      done_when:
+        - reservation_endpoints_documented
+        - reservation_error_codes_documented
+        - reservation_status_rules_documented
+        - user_and_book_api_documentation_preserved
+    completed_at: "2026-10-02T15:30:00-05:00"
+    evidence:
+      - "README.md actualizado de forma aditiva: titulo/descripcion ampliados a 'CRUD de Usuarios y Libros y Reservas en Memoria' y la seccion de bases de la API incluye /api/reservations."
+      - "Nueva seccion 'Endpoints de reservas' con la tabla de DES003 (POST /api/reservations -> 201; GET /api/reservations con query opcional userId -> 200; GET /api/reservations/:id -> 200; DELETE /api/reservations/:id -> 200 con status RELEASED) y ejemplos curl de crear, listar (global y filtrado), consultar y liberar."
+      - "Modelo Reservation documentado {id, userId, bookId, status ACTIVE|RELEASED, createdAt, updatedAt} con explicacion de que RELEASED deja de contar como activa (libro y par usuario+libro vuelven a estar disponibles)."
+      - "Reglas de unicidad documentadas: un libro no puede tener dos reservas activas (BOOK_ALREADY_RESERVED) y un par usuario+libro no puede tener reserva activa duplicada (RESERVATION_CONFLICT), con nota de precedencia de BOOK_ALREADY_RESERVED en el caso solapado."
+      - "Catalogo de errores ampliado en la tabla del contrato uniforme con RESERVATION_NOT_FOUND (404), RESERVATION_CONFLICT (409) y BOOK_ALREADY_RESERVED (409), mas ejemplos JSON de cada uno."
+      - "Nota explicita (ADR003) de que DELETE devuelve 200 con la reserva en estado RELEASED (no 204), a diferencia de usuarios/libros, preservando el historico."
+      - "Arquitectura actualizada incluyendo reservationController, reservationService, reservationRoutes, reservationValidator y ReservationRepository/InMemoryReservationRepository, y el parrafo de almacenamiento menciona la nueva interfaz."
+      - "La documentacion de usuarios y libros (endpoints, modelos, ISBN, ejemplos y errores existentes) se preserva sin cambios de contrato (RN010)."
+      - "npm run lint finaliza sin errores."
+    modified_files:
+      - README.md
